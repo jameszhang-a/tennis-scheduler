@@ -1,7 +1,14 @@
 [
   {
     "type": "one-off",
-    "desired_time": "2025-08-11T19:00:00Z",
-    "court_id": "1"
+    "desired_time": "2025-08-04T07:00:00",
+    "court_id": "1",
+    "duration": 60
+  },
+  {
+    "type": "recurring",
+    "rrule": "FREQ=WEEKLY;BYDAY=WE;BYHOUR=17;BYMINUTE=0;COUNT=52",
+    "court_id": "2",
+    "duration": 60
   }
 ]

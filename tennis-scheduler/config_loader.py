@@ -47,6 +47,7 @@ def load_configs(db: Session, schedules_path: str, tokens_path: str):
                 desired_time=desired_time,
                 trigger_time=trigger_time,
                 court_id=s.get("court_id"),
+                duration=s.get("duration", 60),  
                 status="pending"
             )
             db.add(schedule)
@@ -60,6 +61,7 @@ def load_configs(db: Session, schedules_path: str, tokens_path: str):
                     trigger_time=dt - timedelta(hours=168),
                     rrule=s["rrule"],
                     court_id=s.get("court_id"),
+                    duration=s.get("duration", 60),  
                     status="pending"
                 )
                 db.add(schedule)

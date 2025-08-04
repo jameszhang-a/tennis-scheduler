@@ -18,6 +18,7 @@ class Schedule(Base):
     court_id = Column(String)  # Optional
     status = Column(String, default="pending")  # pending, success, failed
     trigger_time = Column(DateTime, nullable=False)
+    duration = Column(Integer, default=60)  # Duration in minutes, defaults to 60
 
 class Token(Base):
     __tablename__ = "tokens"

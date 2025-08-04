@@ -10,4 +10,4 @@ COPY . .
 # Create data directory for volumes
 RUN mkdir -p /app/data
 
-CMD ["python", "main.py"]
+CMD ["python", "tennis-scheduler/main.py"]
