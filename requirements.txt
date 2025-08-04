@@ -1,0 +1,7 @@
+fastapi==0.111.1  # Not used yet but included for future web portal
+uvicorn==0.30.3   # Not used yet but for future
+sqlalchemy==2.0.31
+apscheduler==3.10.4
+requests==2.32.3
+python-dateutil==2.9.0.post0
+cryptography==42.0.8
