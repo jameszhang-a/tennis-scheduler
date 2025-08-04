@@ -7,7 +7,7 @@
   },
   {
     "type": "recurring",
-    "rrule": "FREQ=WEEKLY;BYDAY=WE;BYHOUR=17;BYMINUTE=0;COUNT=52",
+    "rrule": "FREQ=WEEKLY;BYDAY=6;BYHOUR=17;BYMINUTE=0;COUNT=52",
     "court_id": "2",
     "duration": 60
   }
