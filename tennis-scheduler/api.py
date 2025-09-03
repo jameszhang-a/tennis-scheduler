@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field, validator
 import pytz
 from models import Base, Schedule, ScheduleType, Token
 from apscheduler.schedulers.background import BackgroundScheduler
+from auth import get_fresh_access_token
+from cryptography.fernet import Fernet
 import os
 import logging
 
@@ -91,6 +93,18 @@ class TokenStatusResponse(BaseModel):
             datetime: lambda v: v.isoformat() if v else None
         }
 
+class TokenRefreshResponse(BaseModel):
+    success: bool
+    message: str
+    access_expiry: Optional[datetime]
+    refresh_expiry: Optional[datetime]
+    refreshed_at: datetime
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None
+        }
+
 # Create FastAPI app
 app = FastAPI(
     title="Tennis Scheduler API",
@@ -131,6 +145,13 @@ def set_scheduler(scheduler: BackgroundScheduler):
 def get_scheduler():
     """Get the scheduler instance"""
     return scheduler_ref["scheduler"]
+
+def get_encryption_key():
+    """Get the encryption key for token operations"""
+    key = os.getenv("FERNET_KEY")
+    if not key:
+        raise HTTPException(status_code=500, detail="Encryption key not configured")
+    return Fernet(key.encode())
 
 @app.get("/api/health")
 def health_check():
@@ -444,6 +465,67 @@ def get_token_status(db: Session = Depends(get_db)):
         days_until_refresh_expires=round(days_until_expires, 2) if days_until_expires else None,
         last_refresh_attempt=last_refresh_attempt
     )
+
+@app.post("/api/token/refresh", response_model=TokenRefreshResponse)
+def refresh_token(db: Session = Depends(get_db)):
+    """Manually refresh the authentication tokens"""
+    # Check if token exists
+    token = db.query(Token).first()
+    if not token:
+        raise HTTPException(
+            status_code=404, 
+            detail="No authentication tokens found. Please configure tokens.json and restart the scheduler."
+        )
+    
+    # Check if refresh token is expired
+    import time
+    current_time = time.time()
+    if token.refresh_expiry and token.refresh_expiry < current_time:
+        raise HTTPException(
+            status_code=400,
+            detail="Refresh token has expired. Please update tokens.json with new credentials."
+        )
+    
+    try:
+        # Get encryption key
+        fernet = get_encryption_key()
+        
+        # Attempt to refresh the token
+        new_access_token = get_fresh_access_token(db, token.id, fernet)
+        
+        # Get updated token info
+        refreshed_token = db.query(Token).first()
+        refreshed_at = datetime.now(pytz.timezone('US/Eastern'))
+        
+        logger.info("Token refreshed successfully via API endpoint")
+        
+        return TokenRefreshResponse(
+            success=True,
+            message="Tokens refreshed successfully",
+            access_expiry=datetime.fromtimestamp(refreshed_token.access_expiry) if refreshed_token.access_expiry else None,
+            refresh_expiry=datetime.fromtimestamp(refreshed_token.refresh_expiry) if refreshed_token.refresh_expiry else None,
+            refreshed_at=refreshed_at
+        )
+        
+    except Exception as e:
+        logger.error(f"Manual token refresh failed: {e}")
+        
+        # Determine the appropriate error message and status code
+        error_message = str(e)
+        status_code = 500
+        
+        if "expired" in error_message.lower():
+            status_code = 400
+        elif "unauthorized" in error_message.lower():
+            status_code = 401
+        
+        return TokenRefreshResponse(
+            success=False,
+            message=f"Token refresh failed: {error_message}",
+            access_expiry=None,
+            refresh_expiry=None,
+            refreshed_at=datetime.now(pytz.timezone('US/Eastern'))
+        )
 
 @app.get("/api/schedules/upcoming", response_model=List[ScheduleResponse])
 def get_upcoming_schedules(

@@ -10,6 +10,7 @@ I've implemented a REST API for your tennis scheduler using FastAPI. The API run
 - Check scheduler status and active jobs
 - View statistics and token status
 - Cancel pending schedules
+- **NEW**: Manually refresh authentication tokens
 
 ## Quick Start
 
@@ -47,6 +48,7 @@ GET http://localhost:8000/api/health
 GET http://localhost:8000/api/schedules?status=pending
 GET http://localhost:8000/api/scheduler/status
 GET http://localhost:8000/api/stats
+POST http://localhost:8000/api/token/refresh
 ```
 
 ### 3. Key Endpoints
@@ -57,6 +59,8 @@ GET http://localhost:8000/api/stats
 | `GET /api/schedules/upcoming` | Get next 7 days of schedules      |
 | `GET /api/scheduler/status`   | Check if scheduler is running     |
 | `GET /api/stats`              | Get booking statistics            |
+| `GET /api/token/status`       | Check token status and expiry     |
+| `POST /api/token/refresh`     | Manually refresh auth tokens      |
 | `DELETE /api/schedules/{id}`  | Cancel a pending schedule         |
 
 ## Technical Details

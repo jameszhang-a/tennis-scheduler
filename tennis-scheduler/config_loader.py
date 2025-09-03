@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timedelta
+import time
 from dateutil.rrule import rrulestr
 from sqlalchemy.orm import Session
 from models import Schedule, ScheduleType, Token
@@ -27,7 +28,7 @@ def load_configs(db: Session, schedules_path: str, tokens_path: str):
             refresh_token=fernet.encrypt(refresh_token.encode()),
             access_token=fernet.encrypt(b""),
             access_expiry=0,
-            refresh_expiry=0,
+            refresh_expiry=time.time() + 20 * 60,
             session_state=""
         )
         db.add(token)
