@@ -19,10 +19,13 @@ def get_amenity_id(court_id: str) -> int:
     return court_mapping.get(court_id, 8)  # Default to court 1
 
 def book_slot(db: Session, schedule_id: int, fernet: Fernet):
+    logger.info(f"book_slot function called for schedule {schedule_id}")
     schedule = db.query(Schedule).get(schedule_id)
     if not schedule:
         logger.error(f"Schedule {schedule_id} not found")
         return
+    
+    logger.info(f"Found schedule {schedule_id}: type={schedule.type.value}, desired_time={schedule.desired_time}, court_id={schedule.court_id}")
     
     try:
         # Get fresh token
