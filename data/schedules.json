@@ -7,7 +7,13 @@
   },
   {
     "type": "one-off",
-    "desired_time": "2025-09-03T07:00:00",
+    "desired_time": "2025-09-10T18:30:00",
+    "court_id": "2",
+    "duration": 60
+  },
+  {
+    "type": "one-off",
+    "desired_time": "2025-09-10T19:00:00",
     "court_id": "2",
     "duration": 60
   },
