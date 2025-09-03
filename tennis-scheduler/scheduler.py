@@ -28,7 +28,7 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
                 desired_time = to_eastern(schedule.desired_time)
                 # If desired time is still in the future, schedule immediately
                 if desired_time > now:
-                    immediate_trigger = now + timedelta(seconds=10)
+                    immediate_trigger = now + timedelta(seconds=30)
                     scheduler.add_job(
                         book_slot,
                         "date",
