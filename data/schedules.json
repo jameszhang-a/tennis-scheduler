@@ -1,14 +1,8 @@
 [
   {
-    "type": "one-off",
-    "desired_time": "2025-08-04T07:00:00",
-    "court_id": "1",
-    "duration": 60
-  },
-  {
     "type": "recurring",
-    "rrule": "FREQ=WEEKLY;BYDAY=6;BYHOUR=17;BYMINUTE=0;COUNT=52",
-    "court_id": "2",
+    "rrule": "FREQ=WEEKLY;BYDAY=TU;BYHOUR=18;BYMINUTE=0;COUNT=10",
+    "court_id": "1",
     "duration": 60
   }
 ]

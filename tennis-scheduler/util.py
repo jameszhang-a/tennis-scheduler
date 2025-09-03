@@ -6,6 +6,30 @@ def to_utc(dt: datetime) -> datetime:
         return dt.replace(tzinfo=pytz.UTC)
     return dt.astimezone(pytz.UTC)
 
+def to_eastern(dt: datetime) -> datetime:
+    """Convert datetime to Eastern timezone"""
+    eastern = pytz.timezone('US/Eastern')
+    if dt.tzinfo is None:
+        # Assume naive datetime is already in Eastern timezone
+        return eastern.localize(dt)
+    else:
+        # Convert from other timezone to Eastern
+        return dt.astimezone(eastern)
+
+def eastern_now() -> datetime:
+    """Get current time in Eastern timezone"""
+    eastern = pytz.timezone('US/Eastern')
+    return datetime.now(eastern)
+
+def parse_eastern_time(time_str: str) -> datetime:
+    """Parse time string as Eastern timezone"""
+    eastern = pytz.timezone('US/Eastern')
+    # Remove 'Z' suffix if present and parse as naive datetime
+    clean_time_str = time_str.replace("Z", "")
+    dt = datetime.fromisoformat(clean_time_str)
+    # Localize to Eastern timezone
+    return eastern.localize(dt)
+
 def format_api_datetime(dt: datetime) -> str:
     """Format datetime for Atrium API in Eastern timezone"""
     eastern = pytz.timezone('US/Eastern')

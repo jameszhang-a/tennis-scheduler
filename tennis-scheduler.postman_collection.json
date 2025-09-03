@@ -1,0 +1,335 @@
+{
+  "info": {
+    "name": "Tennis Scheduler API",
+    "description": "API collection for testing the Tennis Scheduler endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Status",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "health"]
+            }
+          }
+        },
+        {
+          "name": "Get Scheduler Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scheduler/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scheduler", "status"]
+            }
+          }
+        },
+        {
+          "name": "Get Scheduler Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scheduler/summary",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scheduler", "summary"]
+            }
+          }
+        },
+        {
+          "name": "Get Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/stats",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stats"]
+            }
+          }
+        },
+        {
+          "name": "Get Token Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/token/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "token", "status"]
+            }
+          }
+        },
+        {
+          "name": "Get Scheduler Alerts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scheduler/alerts",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scheduler", "alerts"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Live Scheduler Jobs",
+      "item": [
+        {
+          "name": "Get All Jobs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scheduler/jobs",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scheduler", "jobs"]
+            }
+          }
+        },
+        {
+          "name": "Get Booking Jobs Only",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scheduler/jobs?job_type=booking",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scheduler", "jobs"],
+              "query": [
+                {
+                  "key": "job_type",
+                  "value": "booking"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Token Refresh Jobs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scheduler/jobs/token-refresh",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scheduler", "jobs", "token-refresh"]
+            }
+          }
+        },
+        {
+          "name": "Get Jobs Sorted by Next Run Time",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scheduler/jobs?sort_by=next_run_time&order=asc&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scheduler", "jobs"],
+              "query": [
+                {
+                  "key": "sort_by",
+                  "value": "next_run_time"
+                },
+                {
+                  "key": "order",
+                  "value": "asc"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Jobs Running in Next 24 Hours",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scheduler/jobs/upcoming?hours=24",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scheduler", "jobs", "upcoming"],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "24"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Booking Jobs in Next 7 Days",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scheduler/jobs/upcoming?hours=168&job_type=booking",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scheduler", "jobs", "upcoming"],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "168"
+                },
+                {
+                  "key": "job_type",
+                  "value": "booking"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Schedules",
+      "item": [
+        {
+          "name": "Get All Schedules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/schedules",
+              "host": ["{{base_url}}"],
+              "path": ["api", "schedules"]
+            }
+          }
+        },
+        {
+          "name": "Get Pending Schedules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/schedules?status=pending",
+              "host": ["{{base_url}}"],
+              "path": ["api", "schedules"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "pending"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Schedules by Court",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/schedules?court_id=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "schedules"],
+              "query": [
+                {
+                  "key": "court_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Schedules with Pagination",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/schedules?limit=10&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "schedules"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Schedule by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/schedules/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "schedules", "1"]
+            }
+          }
+        },
+        {
+          "name": "Get Upcoming Schedules (7 days)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/schedules/upcoming",
+              "host": ["{{base_url}}"],
+              "path": ["api", "schedules", "upcoming"]
+            }
+          }
+        },
+        {
+          "name": "Get Upcoming Schedules (14 days)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/schedules/upcoming?days=14",
+              "host": ["{{base_url}}"],
+              "path": ["api", "schedules", "upcoming"],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "14"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cancel Schedule",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/schedules/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "schedules", "1"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

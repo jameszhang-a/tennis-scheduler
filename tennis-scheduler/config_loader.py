@@ -4,8 +4,10 @@ from dateutil.rrule import rrulestr
 from sqlalchemy.orm import Session
 from models import Schedule, ScheduleType, Token
 from cryptography.fernet import Fernet
+from util import parse_eastern_time, to_eastern
 import os
 import logging
+import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +40,9 @@ def load_configs(db: Session, schedules_path: str, tokens_path: str):
         schedules = json.load(f)
     
     for s in schedules:
-        desired_time = datetime.fromisoformat(s["desired_time"].replace("Z", "+00:00"))
-        trigger_time = desired_time - timedelta(hours=168)
-        
         if s["type"] == "one-off":
+            desired_time = parse_eastern_time(s["desired_time"])
+            trigger_time = desired_time - timedelta(hours=168)
             schedule = Schedule(
                 type=ScheduleType.ONE_OFF,
                 desired_time=desired_time,
@@ -52,13 +53,19 @@ def load_configs(db: Session, schedules_path: str, tokens_path: str):
             )
             db.add(schedule)
         elif s["type"] == "recurring":
-            rrule = rrulestr(s["rrule"])
+            # Parse RRULE with Eastern timezone context
+            eastern = pytz.timezone('US/Eastern')
+            # Start from a baseline Eastern time (today at midnight)
+            dtstart = eastern.localize(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
+            rrule = rrulestr(s["rrule"], dtstart=dtstart)
             # Generate up to 52 instances
             for dt in rrule[:52]:
+                # Ensure the generated datetime is timezone-aware in Eastern
+                eastern_dt = to_eastern(dt)
                 schedule = Schedule(
                     type=ScheduleType.RECURRING,
-                    desired_time=dt,
-                    trigger_time=dt - timedelta(hours=168),
+                    desired_time=eastern_dt,
+                    trigger_time=eastern_dt - timedelta(hours=168),
                     rrule=s["rrule"],
                     court_id=s.get("court_id"),
                     duration=s.get("duration", 60),  

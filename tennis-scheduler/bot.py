@@ -5,7 +5,7 @@ from models import Schedule, Token
 from sqlalchemy.orm import Session
 from cryptography.fernet import Fernet
 from datetime import timedelta
-from util import format_api_datetime, add_timezone_colon
+from util import format_api_datetime, add_timezone_colon, to_eastern
 import os
 
 logger = logging.getLogger(__name__)
@@ -29,12 +29,15 @@ def book_slot(db: Session, schedule_id: int, fernet: Fernet):
         token = db.query(Token).first()
         access_token = get_fresh_access_token(db, token.id, fernet)
         
+        # Ensure desired_time is timezone-aware in Eastern
+        desired_time = to_eastern(schedule.desired_time)
+        
         # Calculate end time (30 minutes after start, or use duration if available)
         duration = getattr(schedule, 'duration', 60)  # Default 60 minutes
-        end_time = schedule.desired_time + timedelta(minutes=duration)
+        end_time = desired_time + timedelta(minutes=duration)
         
         # Format times for the API (ISO format with Eastern timezone)
-        start_time_str = add_timezone_colon(format_api_datetime(schedule.desired_time))
+        start_time_str = add_timezone_colon(format_api_datetime(desired_time))
         end_time_str = add_timezone_colon(format_api_datetime(end_time))
         
         # Prepare API payload
