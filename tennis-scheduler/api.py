@@ -156,7 +156,23 @@ def get_encryption_key():
 @app.get("/api/health")
 def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "tennis-scheduler"}
+    scheduler_status = "unknown"
+    job_count = 0
+    
+    try:
+        if scheduler_instance:
+            scheduler_status = "running" if scheduler_instance.running else "stopped"
+            job_count = len(scheduler_instance.get_jobs())
+    except Exception as e:
+        logger.warning(f"Error checking scheduler status: {e}")
+        
+    return {
+        "status": "healthy", 
+        "service": "tennis-scheduler",
+        "scheduler_status": scheduler_status,
+        "scheduled_jobs": job_count,
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
 @app.get("/api/schedules", response_model=List[ScheduleResponse])
 def get_schedules(
