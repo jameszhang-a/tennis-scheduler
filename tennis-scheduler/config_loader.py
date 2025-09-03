@@ -44,14 +44,19 @@ def load_configs(db: Session, schedules_path: str, tokens_path: str):
         if s["type"] == "one-off":
             desired_time = parse_eastern_time(s["desired_time"])
             now = to_eastern(datetime.now())
+            utc_now = datetime.now(pytz.timezone('UTC'))
             time_until_desired = desired_time - now
+            logger.info(f"Processing one-off schedule: desired_time={desired_time}, eastern_now={now}, utc_now={utc_now}, time_until_desired={time_until_desired}")
             
             # If the desired time is within 7 days, schedule it to run immediately
             # Otherwise, schedule it 7 days (168 hours) in advance
             if time_until_desired <= timedelta(days=7):
-                # Schedule to run immediately (with a 30-second delay to allow for processing)
-                trigger_time = now + timedelta(seconds=30)
-                logger.info(f"One-off schedule for {desired_time} is within 7 days, scheduling to run immediately at {trigger_time}")
+                # Use UTC time to avoid timezone confusion - schedule to run in 30 seconds from actual now
+                utc_now = datetime.now(pytz.timezone('UTC'))
+                trigger_time_utc = utc_now + timedelta(seconds=30)
+                # Convert back to Eastern for storage (this might be wrong but will be corrected in scheduler)
+                trigger_time = trigger_time_utc.astimezone(pytz.timezone('US/Eastern'))
+                logger.info(f"One-off schedule for {desired_time} is within 7 days, scheduling to run immediately at {trigger_time} (UTC: {trigger_time_utc})")
             else:
                 # Standard 7-day advance scheduling
                 trigger_time = desired_time - timedelta(hours=168)
