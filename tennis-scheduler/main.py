@@ -1,23 +1,28 @@
-import os
-import time
 import logging
+import os
 import threading
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
+import time
+
+import uvicorn
+from api import app, set_scheduler
 from apscheduler.schedulers.background import BackgroundScheduler
 from config_loader import load_configs
-from scheduler import init_scheduler
 from models import Base
-from api import app, set_scheduler
-import uvicorn
+from scheduler import init_scheduler
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
+
 
 def run_api_server():
     """Run the FastAPI server in a separate thread"""
     uvicorn.run(app, host="0.0.0.0", port=8000, log_config=None)
+
 
 def main():
     # Initialize DB
@@ -26,10 +31,10 @@ def main():
     engine = create_engine(f"sqlite:///{db_path}")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
-    
+
     # Set DB_PATH environment variable for API
     os.environ["DB_PATH"] = db_path
-    
+
     # Load configs into DB
     db = Session()
     try:
@@ -42,30 +47,32 @@ def main():
         db.rollback()
         db.close()
         return
-    
+
     # Start scheduler
     scheduler = BackgroundScheduler()
     init_scheduler(scheduler, db)
     scheduler.start()
     logger.info("Scheduler started")
-    
+
     # Make scheduler available to API
     set_scheduler(scheduler)
-    
+
     # Start API server in a separate thread
     api_thread = threading.Thread(target=run_api_server, daemon=True)
     api_thread.start()
     logger.info("API server started on http://0.0.0.0:8000")
-    
+
     try:
         # Keep container running; check for config reloads
         while True:
-            time.sleep(60)  # Check periodically for manual reload signals if added later
+            # Check periodically for manual reload signals if added later
+            time.sleep(60)
     except KeyboardInterrupt:
         scheduler.shutdown()
         logger.info("Scheduler stopped")
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     main()

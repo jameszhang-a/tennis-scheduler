@@ -1,13 +1,15 @@
-from sqlalchemy import Column, Integer, String, DateTime, Enum, Float
-from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime
 import enum
 
+from sqlalchemy import Column, DateTime, Enum, Float, Integer, String
+from sqlalchemy.ext.declarative import declarative_base
+
 Base = declarative_base()
+
 
 class ScheduleType(enum.Enum):
     ONE_OFF = "one-off"
     RECURRING = "recurring"
+
 
 class Schedule(Base):
     __tablename__ = "schedules"
@@ -19,6 +21,7 @@ class Schedule(Base):
     status = Column(String, default="pending")  # pending, success, failed
     trigger_time = Column(DateTime, nullable=False)
     duration = Column(Integer, default=60)  # Duration in minutes, defaults to 60
+
 
 class Token(Base):
     __tablename__ = "tokens"
