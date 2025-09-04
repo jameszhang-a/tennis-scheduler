@@ -30,7 +30,7 @@ def book_slot(db: Session, schedule_id: int, fernet: Fernet, prefilled_amenity_i
     try:
         # Get fresh token
         token = db.query(Token).first()
-        access_token = token.access_token
+        access_token = get_fresh_access_token(db, token.id, fernet)
         
         # Ensure desired_time is timezone-aware in Eastern
         desired_time = to_eastern(schedule.desired_time)
