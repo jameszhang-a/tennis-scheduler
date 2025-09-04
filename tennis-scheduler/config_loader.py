@@ -89,14 +89,20 @@ def load_configs(db: Session, schedules_path: str, tokens_path: str):
             # Start from a baseline Eastern time (today at midnight)
             utc_now = datetime.now(pytz.UTC)
             eastern_now = utc_now.astimezone(eastern)
-            dtstart = eastern.localize(
-                eastern_now.replace(hour=0, minute=0, second=0, microsecond=0)
+            # Create a naive datetime for dtstart, then let rrulestr handle timezone
+            dtstart_naive = eastern_now.replace(
+                hour=0, minute=0, second=0, microsecond=0, tzinfo=None
             )
+            dtstart = eastern.localize(dtstart_naive)
             rrule = rrulestr(s["rrule"], dtstart=dtstart)
             # Generate up to 52 instances
             for dt in rrule[:52]:
-                # Ensure the generated datetime is timezone-aware in Eastern
-                eastern_dt = to_eastern(dt)
+                # dt from rrule should already be timezone-aware in Eastern
+                # If it's not, convert it properly
+                if dt.tzinfo is None:
+                    eastern_dt = eastern.localize(dt)
+                else:
+                    eastern_dt = dt.astimezone(eastern)
                 # Calculate trigger time in UTC, then convert to Eastern for storage
                 eastern_dt_utc = eastern_dt.astimezone(pytz.UTC)
                 trigger_time_utc = eastern_dt_utc - timedelta(hours=168)
