@@ -42,29 +42,33 @@ def load_configs(db: Session, schedules_path: str, tokens_path: str):
     
     for s in schedules:
         if s["type"] == "one-off":
-            desired_time = parse_eastern_time(s["desired_time"])
-            now = to_eastern(datetime.now())
-            utc_now = datetime.now(pytz.timezone('UTC'))
-            time_until_desired = desired_time - now
-            logger.info(f"Processing one-off schedule: desired_time={desired_time}, eastern_now={now}, utc_now={utc_now}, time_until_desired={time_until_desired}")
+            # Parse desired time as Eastern, then convert to UTC for all calculations
+            desired_time_eastern = parse_eastern_time(s["desired_time"])
+            desired_time_utc = desired_time_eastern.astimezone(pytz.UTC)
+            
+            # Work entirely in UTC
+            utc_now = datetime.now(pytz.UTC)
+            time_until_desired = desired_time_utc - utc_now
+            
+            logger.info(f"Processing one-off schedule: desired_time={desired_time_eastern} Eastern ({desired_time_utc} UTC), utc_now={utc_now}, time_until_desired={time_until_desired}")
             
             # If the desired time is within 7 days, schedule it to run immediately
             # Otherwise, schedule it 7 days (168 hours) in advance
             if time_until_desired <= timedelta(days=7):
-                # Use UTC time to avoid timezone confusion - schedule to run in 30 seconds from actual now
-                utc_now = datetime.now(pytz.timezone('UTC'))
+                # Schedule to run in 30 seconds from actual UTC now
                 trigger_time_utc = utc_now + timedelta(seconds=30)
-                # Convert back to Eastern for storage (this might be wrong but will be corrected in scheduler)
+                # Convert to Eastern for database storage
                 trigger_time = trigger_time_utc.astimezone(pytz.timezone('US/Eastern'))
-                logger.info(f"One-off schedule for {desired_time} is within 7 days, scheduling to run immediately at {trigger_time} (UTC: {trigger_time_utc})")
+                logger.info(f"One-off schedule for {desired_time_eastern} is within 7 days, scheduling to run immediately at {trigger_time} Eastern ({trigger_time_utc} UTC)")
             else:
-                # Standard 7-day advance scheduling
-                trigger_time = desired_time - timedelta(hours=168)
-                logger.info(f"One-off schedule for {desired_time} is more than 7 days away, scheduling trigger for {trigger_time}")
+                # Standard 7-day advance scheduling (168 hours before desired time in UTC)
+                trigger_time_utc = desired_time_utc - timedelta(hours=168)
+                trigger_time = trigger_time_utc.astimezone(pytz.timezone('US/Eastern'))
+                logger.info(f"One-off schedule for {desired_time_eastern} is more than 7 days away, scheduling trigger for {trigger_time} Eastern ({trigger_time_utc} UTC)")
             
             schedule = Schedule(
                 type=ScheduleType.ONE_OFF,
-                desired_time=desired_time,
+                desired_time=desired_time_eastern,
                 trigger_time=trigger_time,
                 court_id=s.get("court_id"),
                 duration=s.get("duration", 60),  
@@ -75,16 +79,23 @@ def load_configs(db: Session, schedules_path: str, tokens_path: str):
             # Parse RRULE with Eastern timezone context
             eastern = pytz.timezone('US/Eastern')
             # Start from a baseline Eastern time (today at midnight)
-            dtstart = eastern.localize(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
+            utc_now = datetime.now(pytz.UTC)
+            eastern_now = utc_now.astimezone(eastern)
+            dtstart = eastern.localize(eastern_now.replace(hour=0, minute=0, second=0, microsecond=0))
             rrule = rrulestr(s["rrule"], dtstart=dtstart)
             # Generate up to 52 instances
             for dt in rrule[:52]:
                 # Ensure the generated datetime is timezone-aware in Eastern
                 eastern_dt = to_eastern(dt)
+                # Calculate trigger time in UTC, then convert to Eastern for storage
+                eastern_dt_utc = eastern_dt.astimezone(pytz.UTC)
+                trigger_time_utc = eastern_dt_utc - timedelta(hours=168)
+                trigger_time_eastern = trigger_time_utc.astimezone(eastern)
+                
                 schedule = Schedule(
                     type=ScheduleType.RECURRING,
                     desired_time=eastern_dt,
-                    trigger_time=eastern_dt - timedelta(hours=168),
+                    trigger_time=trigger_time_eastern,
                     rrule=s["rrule"],
                     court_id=s.get("court_id"),
                     duration=s.get("duration", 60),  

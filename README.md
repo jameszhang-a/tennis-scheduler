@@ -207,3 +207,61 @@ logging.basicConfig(level=logging.DEBUG)
 2. Add type hints to all functions
 3. Write unit tests for new features
 4. Update documentation for API changes
+
+## Mermaid chart
+
+```
+flowchart TD
+    A["User Input<br/>(schedules.json)"] --> B{"Schedule Type?"}
+
+    B -->|"One-off"| C["Parse desired_time<br/>(Eastern timezone)"]
+    B -->|"Recurring"| D["Parse RRULE<br/>Generate 52 instances"]
+
+    C --> E{"Within 7 days?"}
+    E -->|"Yes"| F["Set trigger_time<br/>= NOW + 30 seconds"]
+    E -->|"No"| G["Set trigger_time<br/>= desired_time - 7 days"]
+
+    D --> H["For each instance:<br/>Set trigger_time<br/>= desired_time - 7 days"]
+
+    F --> I["Create Schedule in DB<br/>status = 'pending'"]
+    G --> I
+    H --> I
+
+    I --> J["Load tokens.json<br/>Store encrypted refresh_token"]
+
+    J --> K["Initialize Scheduler<br/>(APScheduler)"]
+
+    K --> L["Schedule Jobs"]
+    L --> M["Add booking job<br/>run_date = trigger_time"]
+    L --> N["Add token refresh job<br/>every 20 minutes"]
+
+    M --> O{"Trigger time reached?"}
+    O -->|"Yes"| P["Execute book_slot()"]
+
+    P --> Q["Get fresh access token<br/>(refresh if needed)"]
+    Q --> R["Prepare booking payload"]
+
+    R --> S["Calculate times:<br/>- start_time = desired_time<br/>- end_time = start_time + duration<br/>- court_id → amenity_id mapping"]
+
+    S --> T["API Call to Atrium<br/>POST /amenity-reservations/"]
+
+    T --> U{"Success?"}
+    U -->|"Yes"| V["Update Schedule<br/>status = 'success'"]
+    U -->|"No"| W{"First attempt?"}
+
+    W -->|"Yes"| X["Retry with other court"]
+    X --> T
+    W -->|"No"| Y["Update Schedule<br/>status = 'failed'"]
+
+    V --> Z["Commit to DB"]
+    Y --> Z
+
+    N --> AA["Token Refresh Job<br/>(every 20 min)"]
+    AA --> AB["Use refresh_token<br/>to get new access_token"]
+    AB --> AC["Update Token in DB"]
+
+    style A fill:#e1f5e1
+    style V fill:#d4edda
+    style Y fill:#f8d7da
+    style Z fill:#cfe2ff
+```
