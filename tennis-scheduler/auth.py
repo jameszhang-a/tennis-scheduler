@@ -11,10 +11,18 @@ logger = logging.getLogger(__name__)
 
 
 def get_fresh_access_token(db: Session, token_id: int, fernet: Fernet) -> str:
-    token = db.query(Token).get(token_id)
+
+    token: Token = db.query(Token).get(token_id)
     current_time = time.time()
 
-    if token.access_expiry > current_time + 60:  # Buffer
+    logger.info(
+        f"Getting fresh access token for token {token_id}. Token expire time: {token.access_expiry}. Refresh expire time: {token.refresh_expiry}"
+    )
+
+    if token.access_expiry > current_time + 2:  # Buffer
+        logger.info(
+            f"Access token is still valid.  Access expiry: {token.access_expiry}. Current time: {current_time}"
+        )
         return fernet.decrypt(token.access_token).decode()
 
     if token.refresh_expiry < current_time:
@@ -45,7 +53,9 @@ def get_fresh_access_token(db: Session, token_id: int, fernet: Fernet) -> str:
         token.session_state = data["session_state"]
         db.commit()
 
-        logger.info("Token refreshed successfully")
+        logger.info(
+            f"Token refreshed successfully. Token expire time: {token.access_expiry}. Refresh expire time: {token.refresh_expiry}"
+        )
         return data["access_token"]
     except Exception as e:
         logger.error(f"Token refresh failed: {e}")

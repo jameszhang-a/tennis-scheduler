@@ -36,24 +36,19 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
             if schedule.type.value == "one-off":
                 # If desired time is still in the future (in UTC), schedule immediately
                 if desired_time_utc > utc_now:
-                    # Schedule to run in 30 seconds from actual UTC now
-                    immediate_trigger_utc = utc_now + timedelta(seconds=30)
                     scheduler.add_job(
                         book_slot,
                         "date",
-                        run_date=immediate_trigger_utc,
+                        run_date=utc_now,
                         args=[db, schedule.id, fernet],
                         id=f"booking_{schedule.id}",
                     )
                     # Convert back to Eastern for logging
-                    immediate_trigger_eastern = immediate_trigger_utc.astimezone(
+                    immediate_trigger_eastern = utc_now.astimezone(
                         pytz.timezone("US/Eastern")
                     )
                     logger.info(
-                        f"Past-due one-off schedule {schedule.id} rescheduled to run immediately at {immediate_trigger_eastern} Eastern ({immediate_trigger_utc} UTC) for desired time {desired_time_eastern} Eastern"
-                    )
-                    logger.info(
-                        f"UTC now: {utc_now}, Trigger in 30 seconds: {immediate_trigger_utc}"
+                        f"Past-due one-off schedule {schedule.id} rescheduled to run immediately at {immediate_trigger_eastern} Eastern ({utc_now} UTC) for desired time {desired_time_eastern} Eastern"
                     )
                     continue
                 else:

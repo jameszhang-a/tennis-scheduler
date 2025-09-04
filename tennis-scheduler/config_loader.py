@@ -60,7 +60,7 @@ def load_configs(db: Session, schedules_path: str, tokens_path: str):
             # Otherwise, schedule it 7 days (168 hours) in advance
             if time_until_desired <= timedelta(days=7):
                 # Schedule to run in 30 seconds from actual UTC now
-                trigger_time_utc = utc_now + timedelta(seconds=30)
+                trigger_time_utc = utc_now + timedelta(seconds=1)
                 # Convert to Eastern for database storage
                 trigger_time = trigger_time_utc.astimezone(pytz.timezone("US/Eastern"))
                 logger.info(
