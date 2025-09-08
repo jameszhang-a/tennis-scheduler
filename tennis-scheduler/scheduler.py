@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from auth import get_fresh_access_token
+from auth import get_fresh_access_token, prep_token_for_booking
 from bot import book_slot
 from cryptography.fernet import Fernet
 from util import to_eastern
@@ -36,10 +36,21 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
             if schedule.type.value == "one-off":
                 # If desired time is still in the future (in UTC), schedule immediately
                 if desired_time_utc > utc_now:
+                    # For immediate bookings, also refresh token immediately
+                    scheduler.add_job(
+                        prep_token_for_booking,
+                        "date",
+                        run_date=utc_now,
+                        args=[db, token.id, fernet, schedule.id],
+                        id=f"token_prep_{schedule.id}",
+                    )
+
+                    # Schedule the booking 30 seconds after token prep to ensure token is ready
+                    booking_time = utc_now + timedelta(seconds=30)
                     scheduler.add_job(
                         book_slot,
                         "date",
-                        run_date=utc_now,
+                        run_date=booking_time,
                         args=[db, schedule.id, fernet],
                         id=f"booking_{schedule.id}",
                     )
@@ -47,8 +58,11 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
                     immediate_trigger_eastern = utc_now.astimezone(
                         ZoneInfo("America/New_York")
                     )
+                    booking_trigger_eastern = booking_time.astimezone(
+                        ZoneInfo("America/New_York")
+                    )
                     logger.info(
-                        f"Past-due one-off schedule {schedule.id} rescheduled to run immediately at {immediate_trigger_eastern} Eastern ({utc_now} UTC) for desired time {desired_time_eastern} Eastern"
+                        f"Past-due one-off schedule {schedule.id}: token prep at {immediate_trigger_eastern} Eastern, booking at {booking_trigger_eastern} Eastern for desired time {desired_time_eastern} Eastern"
                     )
                     continue
                 else:
@@ -62,6 +76,25 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
                 continue
 
         # Normal scheduling for future trigger times
+        # Schedule token refresh 2 minutes before booking
+        token_prep_time_utc = trigger_time_utc - timedelta(minutes=2)
+        token_prep_time_eastern = token_prep_time_utc.astimezone(
+            ZoneInfo("America/New_York")
+        )
+
+        # Only schedule token prep if it's still in the future
+        if token_prep_time_utc > utc_now:
+            scheduler.add_job(
+                prep_token_for_booking,
+                "date",
+                run_date=token_prep_time_utc,
+                args=[db, token.id, fernet, schedule.id],
+                id=f"token_prep_{schedule.id}",
+            )
+            logger.info(
+                f"Scheduled token prep for booking {schedule.id} at {token_prep_time_eastern} Eastern ({token_prep_time_utc} UTC)"
+            )
+
         # APScheduler expects UTC time
         scheduler.add_job(
             book_slot,

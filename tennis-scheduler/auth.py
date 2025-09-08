@@ -67,6 +67,59 @@ def get_fresh_access_token(db: Session, token_id: int, fernet: Fernet) -> str:
         raise
 
 
+def prep_token_for_booking(
+    db: Session, token_id: int, fernet: Fernet, schedule_id: int
+) -> str:
+    """Refresh token specifically for an upcoming booking to ensure it's fresh"""
+    logger.info(f"Preparing token for upcoming booking {schedule_id}")
+
+    token: Token = db.query(Token).get(token_id)
+    current_time = time.time()
+
+    # Always refresh the token when preparing for booking to ensure maximum freshness
+    if token.refresh_expiry < current_time:
+        logger.error(
+            f"Refresh token expired while preparing for booking {schedule_id}; update tokens.json"
+        )
+        raise Exception("Refresh token expired")
+
+    try:
+        auth_url = os.getenv(
+            "TENNIS_AUTH_URL",
+            "https://auth.atriumapp.co/realms/my-tfc/protocol/openid-connect/token",
+        )
+
+        response = logged_request(
+            method="POST",
+            url=auth_url,
+            operation_name="booking_token_prep",
+            correlation_id=f"prep_booking_{schedule_id}",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": fernet.decrypt(token.refresh_token).decode(),
+                "client_id": os.getenv("TENNIS_CLIENT_ID", "my-tfc"),
+            },
+        )
+        data = response.json()
+
+        # Update token
+        token.access_token = fernet.encrypt(data["access_token"].encode())
+        token.refresh_token = fernet.encrypt(data["refresh_token"].encode())
+        token.access_expiry = current_time + data["expires_in"]
+        token.refresh_expiry = current_time + data["refresh_expires_in"]
+        token.session_state = data["session_state"]
+        db.commit()
+
+        logger.info(
+            f"Token prepared for booking {schedule_id}. Token expire time: {format_timestamp(token.access_expiry)}. Refresh expire time: {format_timestamp(token.refresh_expiry)}"
+        )
+        return data["access_token"]
+    except Exception as e:
+        logger.error(f"Token preparation for booking {schedule_id} failed: {e}")
+        raise
+
+
 def refresh_with_new_token(db: Session, fernet: Fernet, new_refresh_token: str) -> str:
     """Refresh tokens using a new refresh token provided by the user"""
     current_time = time.time()
