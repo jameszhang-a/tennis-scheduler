@@ -1,20 +1,20 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
-import pytz
 
-
-def to_utc(dt: datetime) -> datetime:
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=pytz.UTC)
-    return dt.astimezone(pytz.UTC)
+def format_timestamp(timestamp: float) -> str:
+    """Convert Unix timestamp to readable Eastern Time format"""
+    et_timezone = ZoneInfo("America/New_York")
+    dt = datetime.fromtimestamp(timestamp, tz=et_timezone)
+    return dt.strftime("%Y-%m-%d %I:%M:%S %p %Z")
 
 
 def to_eastern(dt: datetime) -> datetime:
     """Convert datetime to Eastern timezone"""
-    eastern = pytz.timezone("US/Eastern")
+    eastern = ZoneInfo("America/New_York")
     if dt.tzinfo is None:
         # Assume naive datetime is already in Eastern timezone
-        return eastern.localize(dt)
+        return dt.replace(tzinfo=eastern)
     else:
         # Convert from other timezone to Eastern
         return dt.astimezone(eastern)
@@ -22,20 +22,20 @@ def to_eastern(dt: datetime) -> datetime:
 
 def parse_eastern_time(time_str: str) -> datetime:
     """Parse time string as Eastern timezone"""
-    eastern = pytz.timezone("US/Eastern")
+    eastern = ZoneInfo("America/New_York")
     # Remove 'Z' suffix if present and parse as naive datetime
     clean_time_str = time_str.replace("Z", "")
     dt = datetime.fromisoformat(clean_time_str)
-    # Localize to Eastern timezone
-    return eastern.localize(dt)
+    # Add Eastern timezone to naive datetime
+    return dt.replace(tzinfo=eastern)
 
 
 def format_api_datetime(dt: datetime) -> str:
     """Format datetime for Atrium API in Eastern timezone"""
-    eastern = pytz.timezone("US/Eastern")
+    eastern = ZoneInfo("America/New_York")
     if dt.tzinfo is None:
         # Assume input time is already in Eastern timezone
-        eastern_dt = eastern.localize(dt)
+        eastern_dt = dt.replace(tzinfo=eastern)
     else:
         # Convert to Eastern time if timezone is specified
         eastern_dt = dt.astimezone(eastern)

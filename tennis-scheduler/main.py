@@ -1,3 +1,5 @@
+# Setup logging with JSON formatting for structured logs
+import json
 import logging
 import os
 import threading
@@ -12,10 +14,43 @@ from scheduler import init_scheduler
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+
+class JSONStructuredFormatter(logging.Formatter):
+    """Custom formatter that outputs structured JSON logs when structured_log extra is present"""
+
+    def format(self, record):
+        # Check if this is a structured log
+        if hasattr(record, "structured_log"):
+            return json.dumps(record.structured_log, ensure_ascii=False)
+        else:
+            # Use standard formatting for regular logs
+            return super().format(record)
+
+
+# Configure logging
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+
+# Remove any existing handlers
+for handler in root_logger.handlers[:]:
+    root_logger.removeHandler(handler)
+
+# Create console handler with JSON formatter
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(JSONStructuredFormatter())
+
+# Add handler to root logger
+root_logger.addHandler(console_handler)
+
+# Also add a simple formatter for non-structured logs (backwards compatibility)
+simple_handler = logging.StreamHandler()
+simple_handler.setLevel(logging.INFO)
+simple_handler.addFilter(lambda record: not hasattr(record, "structured_log"))
+simple_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 )
+root_logger.addHandler(simple_handler)
 logger = logging.getLogger(__name__)
 
 

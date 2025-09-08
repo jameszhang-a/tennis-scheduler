@@ -2,8 +2,8 @@ import logging
 import os
 from datetime import datetime, timedelta
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 
-import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from auth import get_fresh_access_token, refresh_with_new_token
 from cryptography.fernet import Fernet
@@ -37,9 +37,9 @@ class ScheduleResponse(BaseModel):
     @validator("desired_time", "trigger_time")
     def convert_timezone(cls, dt):
         # Ensure times are in Eastern timezone for display
-        eastern = pytz.timezone("US/Eastern")
+        eastern = ZoneInfo("America/New_York")
         if dt.tzinfo is None:
-            return eastern.localize(dt)
+            return dt.replace(tzinfo=eastern)
         return dt.astimezone(eastern)
 
     class Config:
@@ -236,7 +236,7 @@ def _format_scheduler_job(job) -> SchedulerJobResponse:
     return SchedulerJobResponse(
         job_id=job.id,
         next_run_time=(
-            job.next_run_time.astimezone(pytz.timezone("US/Eastern"))
+            job.next_run_time.astimezone(ZoneInfo("America/New_York"))
             if job.next_run_time
             else None
         ),
@@ -300,7 +300,8 @@ def get_scheduler_jobs(
     reverse = order.lower() == "desc"
     if sort_by == "next_run_time":
         jobs.sort(
-            key=lambda x: x.next_run_time or datetime.min.replace(tzinfo=pytz.UTC),
+            key=lambda x: x.next_run_time
+            or datetime.min.replace(tzinfo=ZoneInfo("UTC")),
             reverse=reverse,
         )
     elif sort_by == "job_id":
@@ -323,7 +324,7 @@ def get_upcoming_jobs(
     if not scheduler:
         return []
 
-    eastern = pytz.timezone("US/Eastern")
+    eastern = ZoneInfo("America/New_York")
     now = datetime.now(eastern)
     end_time = now + timedelta(hours=hours)
 
@@ -440,7 +441,7 @@ def get_scheduler_alerts(db: Session = Depends(get_db)):
 
     # Check for upcoming bookings without valid tokens
     if alerts:  # If there are token issues
-        eastern = pytz.timezone("US/Eastern")
+        eastern = ZoneInfo("America/New_York")
         now = datetime.now(eastern)
         end_time = now + timedelta(days=7)
 
@@ -503,7 +504,7 @@ def get_stats(db: Session = Depends(get_db)):
     )
 
     # Get next pending booking
-    eastern = pytz.timezone("US/Eastern")
+    eastern = ZoneInfo("America/New_York")
     now = datetime.now(eastern)
     next_booking = (
         db.query(Schedule)
@@ -557,7 +558,7 @@ def get_token_status(db: Session = Depends(get_db)):
             if job.id == "token_refresh" and hasattr(job, "next_run_time"):
                 # Estimate last run time based on interval
                 if job.next_run_time:
-                    eastern = pytz.timezone("US/Eastern")
+                    eastern = ZoneInfo("America/New_York")
                     next_run = job.next_run_time.astimezone(eastern)
                     # Token refresh runs every 20 minutes, so last attempt was ~20 minutes before next
                     last_refresh_attempt = next_run - timedelta(minutes=20)
@@ -614,7 +615,7 @@ def refresh_token(db: Session = Depends(get_db)):
 
         # Get updated token info
         refreshed_token = db.query(Token).first()
-        refreshed_at = datetime.now(pytz.timezone("US/Eastern"))
+        refreshed_at = datetime.now(ZoneInfo("America/New_York"))
 
         logger.info("Token refreshed successfully via API endpoint")
 
@@ -651,7 +652,7 @@ def refresh_token(db: Session = Depends(get_db)):
             message=f"Token refresh failed: {error_message}",
             access_expiry=None,
             refresh_expiry=None,
-            refreshed_at=datetime.now(pytz.timezone("US/Eastern")),
+            refreshed_at=datetime.now(ZoneInfo("America/New_York")),
         )
 
 
@@ -670,7 +671,7 @@ def refresh_token_manual(
 
         # Get token info (will exist after refresh_with_new_token)
         refreshed_token = db.query(Token).first()
-        refreshed_at = datetime.now(pytz.timezone("US/Eastern"))
+        refreshed_at = datetime.now(ZoneInfo("America/New_York"))
 
         # Clear existing token refresh jobs and schedule a new one in 20 minutes
         scheduler = get_scheduler()
@@ -683,7 +684,7 @@ def refresh_token_manual(
                 pass  # Job might not exist
 
             # Schedule new token refresh job in 20 minutes
-            utc_now = datetime.now(pytz.UTC)
+            utc_now = datetime.now(ZoneInfo("UTC"))
             next_refresh_utc = utc_now + timedelta(minutes=20)
 
             scheduler.add_job(
@@ -696,7 +697,7 @@ def refresh_token_manual(
                 replace_existing=True,
             )
 
-            eastern_time = next_refresh_utc.astimezone(pytz.timezone("US/Eastern"))
+            eastern_time = next_refresh_utc.astimezone(ZoneInfo("America/New_York"))
             logger.info(
                 f"Scheduled new token refresh job to start at {eastern_time} Eastern ({next_refresh_utc} UTC)"
             )
@@ -744,7 +745,7 @@ def get_upcoming_schedules(
     db: Session = Depends(get_db),
 ):
     """Get upcoming schedules for the next N days"""
-    eastern = pytz.timezone("US/Eastern")
+    eastern = ZoneInfo("America/New_York")
     now = datetime.now(eastern)
     end_date = now + timedelta(days=days)
 
@@ -792,7 +793,7 @@ def get_scheduler_summary():
     ]
 
     # Find next occurrences
-    eastern = pytz.timezone("US/Eastern")
+    eastern = ZoneInfo("America/New_York")
     now = datetime.now(eastern)
 
     future_booking_jobs = [

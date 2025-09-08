@@ -5,6 +5,7 @@ from datetime import timedelta
 import requests
 from auth import get_fresh_access_token
 from cryptography.fernet import Fernet
+from http_logger import logged_request
 from models import Schedule, Token
 from sqlalchemy.orm import Session
 from util import add_timezone_colon, format_api_datetime, to_eastern
@@ -73,12 +74,19 @@ def book_slot(
             f"Booking slot {schedule_id}: Court {schedule.court_id} (amenity_id {amenity_id}) at {start_time_str} ({attempt_type} attempt)"
         )
 
-        response = requests.post(
-            "https://api.atriumapp.co/api/v1/my/occupants/133055/amenity-reservations/",
+        booking_url = (
+            "https://api.atriumapp.co/api/v1/my/occupants/133055/amenity-reservations/"
+        )
+
+        response = logged_request(
+            method="POST",
+            url=booking_url,
+            operation_name="court_booking",
+            correlation_id=f"booking_{schedule_id}",
             headers={"Authorization": f"Bearer {access_token}"},
             json=payload,
         )
-        response.raise_for_status()
+
         schedule.status = "success"
         logger.info(f"Booking {schedule_id} succeeded: {response.json()}")
     except Exception as e:

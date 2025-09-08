@@ -4,8 +4,10 @@ import time
 
 import requests
 from cryptography.fernet import Fernet
+from http_logger import logged_request
 from models import Token
 from sqlalchemy.orm import Session
+from util import format_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +18,12 @@ def get_fresh_access_token(db: Session, token_id: int, fernet: Fernet) -> str:
     current_time = time.time()
 
     logger.info(
-        f"Getting fresh access token for token {token_id}. Token expire time: {token.access_expiry}. Refresh expire time: {token.refresh_expiry}"
+        f"Getting fresh access token for token {token_id}. Token expire time: {format_timestamp(token.access_expiry)}. Refresh expire time: {format_timestamp(token.refresh_expiry)}"
     )
 
     if token.access_expiry > current_time + 2:  # Buffer
         logger.info(
-            f"Access token is still valid.  Access expiry: {token.access_expiry}. Current time: {current_time}"
+            f"Access token is still valid.  Access expiry: {format_timestamp(token.access_expiry)}. Current time: {format_timestamp(current_time)}"
         )
         return fernet.decrypt(token.access_token).decode()
 
@@ -30,11 +32,15 @@ def get_fresh_access_token(db: Session, token_id: int, fernet: Fernet) -> str:
         raise Exception("Refresh token expired")
 
     try:
-        response = requests.post(
-            os.getenv(
-                "TENNIS_AUTH_URL",
-                "https://auth.atriumapp.co/realms/my-tfc/protocol/openid-connect/token",
-            ),
+        auth_url = os.getenv(
+            "TENNIS_AUTH_URL",
+            "https://auth.atriumapp.co/realms/my-tfc/protocol/openid-connect/token",
+        )
+
+        response = logged_request(
+            method="POST",
+            url=auth_url,
+            operation_name="token_refresh",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             data={
                 "grant_type": "refresh_token",
@@ -42,7 +48,6 @@ def get_fresh_access_token(db: Session, token_id: int, fernet: Fernet) -> str:
                 "client_id": os.getenv("TENNIS_CLIENT_ID", "my-tfc"),
             },
         )
-        response.raise_for_status()
         data = response.json()
 
         # Update token
@@ -54,7 +59,7 @@ def get_fresh_access_token(db: Session, token_id: int, fernet: Fernet) -> str:
         db.commit()
 
         logger.info(
-            f"Token refreshed successfully. Token expire time: {token.access_expiry}. Refresh expire time: {token.refresh_expiry}"
+            f"Token refreshed successfully. Token expire time: {format_timestamp(token.access_expiry)}. Refresh expire time: {format_timestamp(token.refresh_expiry)}"
         )
         return data["access_token"]
     except Exception as e:
@@ -67,11 +72,15 @@ def refresh_with_new_token(db: Session, fernet: Fernet, new_refresh_token: str) 
     current_time = time.time()
 
     try:
-        response = requests.post(
-            os.getenv(
-                "TENNIS_AUTH_URL",
-                "https://auth.atriumapp.co/realms/my-tfc/protocol/openid-connect/token",
-            ),
+        auth_url = os.getenv(
+            "TENNIS_AUTH_URL",
+            "https://auth.atriumapp.co/realms/my-tfc/protocol/openid-connect/token",
+        )
+
+        response = logged_request(
+            method="POST",
+            url=auth_url,
+            operation_name="manual_token_refresh",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             data={
                 "grant_type": "refresh_token",
@@ -79,7 +88,6 @@ def refresh_with_new_token(db: Session, fernet: Fernet, new_refresh_token: str) 
                 "client_id": os.getenv("TENNIS_CLIENT_ID", "my-tfc"),
             },
         )
-        response.raise_for_status()
         data = response.json()
 
         # Get existing token or create new one

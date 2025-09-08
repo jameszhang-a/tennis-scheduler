@@ -1,8 +1,8 @@
 import logging
 import os
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
-import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from auth import get_fresh_access_token
 from bot import book_slot
@@ -23,12 +23,12 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
     for schedule in pending:
         # Convert all times to UTC for consistent comparisons
         trigger_time_eastern = to_eastern(schedule.trigger_time)
-        trigger_time_utc = trigger_time_eastern.astimezone(pytz.UTC)
+        trigger_time_utc = trigger_time_eastern.astimezone(ZoneInfo("UTC"))
 
         desired_time_eastern = to_eastern(schedule.desired_time)
-        desired_time_utc = desired_time_eastern.astimezone(pytz.UTC)
+        desired_time_utc = desired_time_eastern.astimezone(ZoneInfo("UTC"))
 
-        utc_now = datetime.now(pytz.UTC)
+        utc_now = datetime.now(ZoneInfo("UTC"))
 
         # Handle past-due schedules differently based on type
         if trigger_time_utc <= utc_now:
@@ -45,7 +45,7 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
                     )
                     # Convert back to Eastern for logging
                     immediate_trigger_eastern = utc_now.astimezone(
-                        pytz.timezone("US/Eastern")
+                        ZoneInfo("America/New_York")
                     )
                     logger.info(
                         f"Past-due one-off schedule {schedule.id} rescheduled to run immediately at {immediate_trigger_eastern} Eastern ({utc_now} UTC) for desired time {desired_time_eastern} Eastern"
