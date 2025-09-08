@@ -19,6 +19,12 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
 
     fernet = Fernet(os.getenv("FERNET_KEY").encode())
 
+    # Get token early since we need it for token prep jobs
+    token = db.query(Token).first()
+    if not token:
+        logger.error("No token found in database - cannot schedule token prep jobs")
+        return
+
     pending = db.query(Schedule).filter(Schedule.status == "pending").all()
     for schedule in pending:
         # Convert all times to UTC for consistent comparisons
@@ -108,14 +114,12 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
         )
 
     # Add token refresh job (every 20min)
-    token = db.query(Token).first()
-    if token:
-        scheduler.add_job(
-            get_fresh_access_token,
-            "interval",
-            minutes=20,
-            args=[db, token.id, fernet],
-            id="token_refresh",
-            replace_existing=True,
-        )
-        logger.info("Scheduled token refresh")
+    scheduler.add_job(
+        get_fresh_access_token,
+        "interval",
+        minutes=20,
+        args=[db, token.id, fernet],
+        id="token_refresh",
+        replace_existing=True,
+    )
+    logger.info("Scheduled token refresh")
