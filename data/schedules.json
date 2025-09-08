@@ -1,25 +1,25 @@
 [
   {
     "type": "recurring",
-    "rrule": "FREQ=WEEKLY;BYDAY=TU;BYHOUR=18;BYMINUTE=0;COUNT=10",
+    "rrule": "FREQ=DAILY;BYHOUR=18;BYMINUTE=30;COUNT=30",
     "court_id": "1",
     "duration": 60
   },
   {
     "type": "recurring",
-    "rrule": "FREQ=WEEKLY;BYDAY=WE;BYHOUR=18;BYMINUTE=0;COUNT=10",
+    "rrule": "FREQ=DAILY;BYHOUR=19;BYMINUTE=0;COUNT=30",
     "court_id": "1",
     "duration": 60
   },
   {
     "type": "recurring",
-    "rrule": "FREQ=WEEKLY;BYDAY=TH;BYHOUR=18;BYMINUTE=0;COUNT=10",
+    "rrule": "FREQ=WEEKLY;BYDAY=MO;BYHOUR=7;BYMINUTE=0;COUNT=1",
     "court_id": "1",
     "duration": 60
   },
   {
     "type": "recurring",
-    "rrule": "FREQ=WEEKLY;BYDAY=TH;BYHOUR=18;BYMINUTE=30;COUNT=10",
+    "rrule": "FREQ=WEEKLY;BYDAY=SU;BYHOUR=16;BYMINUTE=0;COUNT=10",
     "court_id": "1",
     "duration": 60
   }
