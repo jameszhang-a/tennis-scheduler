@@ -86,16 +86,20 @@ def load_configs(db: Session, schedules_path: str, tokens_path: str):
         elif s["type"] == "recurring":
             # Parse RRULE with Eastern timezone context
             eastern = ZoneInfo("America/New_York")
-            # Start from a baseline Eastern time (today at midnight)
             utc_now = datetime.now(ZoneInfo("UTC"))
             eastern_now = utc_now.astimezone(eastern)
+
             # Create a naive datetime for dtstart, then let rrulestr handle timezone
             dtstart_naive = eastern_now.replace(
                 hour=0, minute=0, second=0, microsecond=0, tzinfo=None
             )
             dtstart = dtstart_naive.replace(tzinfo=eastern)
             rrule = rrulestr(s["rrule"], dtstart=dtstart)
-            # Generate up to 52 instances
+            print("RRULE")
+            print(rrule)
+
+            # Generate up to 52 instances and filter for future occurrences only
+            added_count = 0
             for dt in rrule[:52]:
                 # dt from rrule should already be timezone-aware in Eastern
                 # If it's not, convert it properly
@@ -103,11 +107,29 @@ def load_configs(db: Session, schedules_path: str, tokens_path: str):
                     eastern_dt = dt.replace(tzinfo=eastern)
                 else:
                     eastern_dt = dt.astimezone(eastern)
-                # Calculate trigger time in UTC, then convert to Eastern for storage
+
+                # Only process future desired times
                 eastern_dt_utc = eastern_dt.astimezone(ZoneInfo("UTC"))
+                if eastern_dt_utc <= utc_now:
+                    logger.info(
+                        f"Skipping past recurring occurrence: {eastern_dt} Eastern"
+                    )
+                    continue
+
+                # Calculate trigger time (7 days before desired time)
                 trigger_time_utc = eastern_dt_utc - timedelta(hours=168)
                 trigger_time_eastern = trigger_time_utc.astimezone(eastern)
 
+                # Only schedule if trigger time is also in the future
+                if trigger_time_utc <= utc_now:
+                    logger.info(
+                        f"Skipping recurring occurrence {eastern_dt} Eastern - trigger time {trigger_time_eastern} Eastern is in the past"
+                    )
+                    continue
+
+                logger.info(
+                    f"Adding recurring schedule: desired={eastern_dt} Eastern, trigger={trigger_time_eastern} Eastern"
+                )
                 schedule = Schedule(
                     type=ScheduleType.RECURRING,
                     desired_time=eastern_dt,
@@ -118,4 +140,9 @@ def load_configs(db: Session, schedules_path: str, tokens_path: str):
                     status="pending",
                 )
                 db.add(schedule)
+                added_count += 1
+
+            logger.info(
+                f"Added {added_count} future recurring schedules for rule: {s['rrule']}"
+            )
         db.commit()
