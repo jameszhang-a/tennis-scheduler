@@ -218,6 +218,30 @@ def get_schedules(
     return schedules
 
 
+@app.get("/api/schedules/upcoming", response_model=List[ScheduleResponse])
+def get_upcoming_schedules(
+    days: int = Query(7, ge=1, le=30, description="Number of days to look ahead"),
+    db: Session = Depends(get_db),
+):
+    """Get upcoming schedules for the next N days"""
+    eastern = ZoneInfo("America/New_York")
+    now = datetime.now(eastern)
+    end_date = now + timedelta(days=days)
+
+    schedules = (
+        db.query(Schedule)
+        .filter(
+            Schedule.status == "pending",
+            Schedule.desired_time >= now,
+            Schedule.desired_time <= end_date,
+        )
+        .order_by(Schedule.desired_time)
+        .all()
+    )
+
+    return schedules
+
+
 @app.get("/api/schedules/{schedule_id}", response_model=ScheduleResponse)
 def get_schedule(schedule_id: int, db: Session = Depends(get_db)):
     """Get a specific schedule by ID"""
@@ -267,7 +291,7 @@ def get_scheduler_status():
 @app.get("/api/scheduler/jobs", response_model=List[SchedulerJobResponse])
 def get_scheduler_jobs(
     job_type: Optional[str] = Query(
-        None, description="Filter by job type (booking, token_refresh)"
+        None, description="Filter by job type (booking, token_refresh, token_prep)"
     ),
     sort_by: str = Query(
         "next_run_time", description="Sort by: next_run_time, job_id, func_name"
@@ -288,12 +312,15 @@ def get_scheduler_jobs(
             jobs = [job for job in jobs if job.job_id.startswith("booking_")]
         elif job_type.lower() == "token_refresh":
             jobs = [job for job in jobs if job.job_id == "token_refresh"]
+        elif job_type.lower() == "token_prep":
+            jobs = [job for job in jobs if job.job_id.startswith("token_prep_")]
         elif job_type.lower() == "other":
             jobs = [
                 job
                 for job in jobs
                 if not job.job_id.startswith("booking_")
                 and job.job_id != "token_refresh"
+                and not job.job_id.startswith("token_prep_")
             ]
 
     # Sort jobs
@@ -611,7 +638,8 @@ def refresh_token(db: Session = Depends(get_db)):
         fernet = get_encryption_key()
 
         # Attempt to refresh the token
-        get_fresh_access_token(db, token.id, fernet)
+        scheduler = get_scheduler()
+        get_fresh_access_token(db, token.id, fernet, scheduler)
 
         # Get updated token info
         refreshed_token = db.query(Token).first()
@@ -667,40 +695,12 @@ def refresh_token_manual(
 
         # Attempt to refresh the token with the new refresh token
         # This will create a new token record if none exists
-        refresh_with_new_token(db, fernet, request.refresh_token)
+        scheduler = get_scheduler()
+        refresh_with_new_token(db, fernet, request.refresh_token, scheduler)
 
         # Get token info (will exist after refresh_with_new_token)
         refreshed_token = db.query(Token).first()
         refreshed_at = datetime.now(ZoneInfo("America/New_York"))
-
-        # Clear existing token refresh jobs and schedule a new one in 20 minutes
-        scheduler = get_scheduler()
-        if scheduler:
-            # Remove existing token refresh jobs
-            try:
-                scheduler.remove_job("token_refresh")
-                logger.info("Removed existing token refresh job")
-            except:
-                pass  # Job might not exist
-
-            # Schedule new token refresh job in 20 minutes
-            utc_now = datetime.now(ZoneInfo("UTC"))
-            next_refresh_utc = utc_now + timedelta(minutes=20)
-
-            scheduler.add_job(
-                get_fresh_access_token,
-                "interval",
-                minutes=20,
-                start_date=next_refresh_utc,
-                args=[db, refreshed_token.id, fernet],
-                id="token_refresh",
-                replace_existing=True,
-            )
-
-            eastern_time = next_refresh_utc.astimezone(ZoneInfo("America/New_York"))
-            logger.info(
-                f"Scheduled new token refresh job to start at {eastern_time} Eastern ({next_refresh_utc} UTC)"
-            )
 
         logger.info("Token refreshed successfully via manual refresh API endpoint")
 
@@ -737,30 +737,6 @@ def refresh_token_manual(
         raise HTTPException(
             status_code=status_code, detail=f"Token refresh failed: {error_message}"
         )
-
-
-@app.get("/api/schedules/upcoming", response_model=List[ScheduleResponse])
-def get_upcoming_schedules(
-    days: int = Query(7, ge=1, le=30, description="Number of days to look ahead"),
-    db: Session = Depends(get_db),
-):
-    """Get upcoming schedules for the next N days"""
-    eastern = ZoneInfo("America/New_York")
-    now = datetime.now(eastern)
-    end_date = now + timedelta(days=days)
-
-    schedules = (
-        db.query(Schedule)
-        .filter(
-            Schedule.status == "pending",
-            Schedule.desired_time >= now,
-            Schedule.desired_time <= end_date,
-        )
-        .order_by(Schedule.desired_time)
-        .all()
-    )
-
-    return schedules
 
 
 @app.get("/api/scheduler/summary")

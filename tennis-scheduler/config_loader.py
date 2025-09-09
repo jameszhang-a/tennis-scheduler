@@ -29,7 +29,7 @@ def load_configs(db: Session, schedules_path: str, tokens_path: str):
         token = Token(
             refresh_token=fernet.encrypt(refresh_token.encode()),
             access_token=fernet.encrypt(b""),
-            access_expiry=0,
+            access_expiry=time.time() + 5 * 60,
             refresh_expiry=time.time() + 20 * 60,
             session_state="",
         )

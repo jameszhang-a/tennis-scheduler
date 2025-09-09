@@ -4,7 +4,11 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from auth import get_fresh_access_token, prep_token_for_booking
+from auth import (
+    get_fresh_access_token,
+    prep_token_for_booking,
+    schedule_next_token_refresh,
+)
 from bot import book_slot
 from cryptography.fernet import Fernet
 from util import to_eastern
@@ -47,7 +51,7 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
                         prep_token_for_booking,
                         "date",
                         run_date=utc_now,
-                        args=[db, token.id, fernet, schedule.id],
+                        args=[db, token.id, fernet, schedule.id, scheduler],
                         id=f"token_prep_{schedule.id}",
                     )
 
@@ -94,7 +98,7 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
                 prep_token_for_booking,
                 "date",
                 run_date=token_prep_time_utc,
-                args=[db, token.id, fernet, schedule.id],
+                args=[db, token.id, fernet, schedule.id, scheduler],
                 id=f"token_prep_{schedule.id}",
             )
             logger.info(
@@ -113,13 +117,6 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
             f"Scheduled booking {schedule.id} for {trigger_time_eastern} Eastern ({trigger_time_utc} UTC)"
         )
 
-    # Add token refresh job (every 20min)
-    scheduler.add_job(
-        get_fresh_access_token,
-        "interval",
-        minutes=20,
-        args=[db, token.id, fernet],
-        id="token_refresh",
-        replace_existing=True,
-    )
-    logger.info("Scheduled token refresh")
+    # Schedule dynamic token refresh based on refresh token expiry
+    schedule_next_token_refresh(scheduler, db, token.id, fernet)
+    logger.info("Scheduled dynamic token refresh")
