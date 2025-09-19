@@ -13,13 +13,19 @@
   },
   {
     "type": "recurring",
-    "rrule": "FREQ=WEEKLY;BYDAY=MO;BYHOUR=7;BYMINUTE=0;COUNT=10",
+    "rrule": "FREQ=WEEKLY;BYDAY=SU;BYHOUR=16;BYMINUTE=0;COUNT=10",
     "court_id": "1",
     "duration": 60
   },
   {
     "type": "recurring",
-    "rrule": "FREQ=WEEKLY;BYDAY=SU;BYHOUR=16;BYMINUTE=0;COUNT=10",
+    "rrule": "FREQ=WEEKLY;BYDAY=FR;BYHOUR=9;BYMINUTE=0;COUNT=10",
+    "court_id": "1",
+    "duration": 60
+  },
+  {
+    "type": "recurring",
+    "rrule": "FREQ=WEEKLY;BYDAY=FR;BYHOUR=9;BYMINUTE=30;COUNT=10",
     "court_id": "1",
     "duration": 60
   }
