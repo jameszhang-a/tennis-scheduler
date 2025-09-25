@@ -15,60 +15,90 @@ logger = logging.getLogger(__name__)
 
 
 def schedule_next_token_refresh(scheduler, db: Session, token_id: int, fernet: Fernet):
-    """Schedule the next automatic token refresh 30 seconds before the refresh token expires"""
+    """Schedule automatic token refresh using a hybrid approach"""
     token: Token = db.query(Token).get(token_id)
     if not token:
         logger.error("No token found - cannot schedule next refresh")
         return
 
     current_time = time.time()
+    access_expiry = token.access_expiry
     refresh_expiry = token.refresh_expiry
 
-    # Schedule refresh 30 seconds before refresh token expires
-    next_refresh_time = refresh_expiry - 30
-
-    if next_refresh_time <= current_time:
-        logger.warning(
-            f"Refresh token expires very soon ({format_timestamp(refresh_expiry)}), cannot schedule next refresh"
-        )
-        return
-
-    # Convert to datetime for APScheduler
-    next_refresh_datetime = datetime.fromtimestamp(
-        next_refresh_time, tz=ZoneInfo("UTC")
-    )
-    next_refresh_eastern = next_refresh_datetime.astimezone(
-        ZoneInfo("America/New_York")
-    )
-
-    # Remove existing token refresh job if it exists
+    # Remove existing token refresh jobs if they exist
     try:
         scheduler.remove_job("token_refresh")
     except:
         pass  # Job might not exist
 
-    # Schedule the new refresh job
+    try:
+        scheduler.remove_job("token_refresh_interval")
+    except:
+        pass  # Job might not exist
+
+    # Approach 1: Regular interval refresh every 20 minutes
+    # This handles the 30-minute access token expiry cycle
     scheduler.add_job(
         auto_refresh_token,
-        "date",
-        run_date=next_refresh_datetime,
+        "interval",
+        minutes=20,
         args=[scheduler, db, token_id, fernet],
-        id="token_refresh",
+        id="token_refresh_interval",
         replace_existing=True,
     )
-
     logger.info(
-        f"Scheduled next token refresh for {next_refresh_eastern} Eastern (30 seconds before refresh token expires)"
+        "Scheduled regular token refresh every 20 minutes (for 30-min access token expiry)"
     )
+
+    # Approach 2: Smart scheduling before refresh token expires
+    # This ensures we refresh before the refresh token itself expires
+    next_refresh_time = refresh_expiry - 30
+
+    if next_refresh_time > current_time:
+        # Convert to datetime for APScheduler
+        next_refresh_datetime = datetime.fromtimestamp(
+            next_refresh_time, tz=ZoneInfo("UTC")
+        )
+        next_refresh_eastern = next_refresh_datetime.astimezone(
+            ZoneInfo("America/New_York")
+        )
+
+        # Schedule the refresh token expiry protection job
+        scheduler.add_job(
+            auto_refresh_token,
+            "date",
+            run_date=next_refresh_datetime,
+            args=[scheduler, db, token_id, fernet],
+            id="token_refresh_expiry_protection",
+            replace_existing=True,
+        )
+
+        logger.info(
+            f"Scheduled refresh token expiry protection for {next_refresh_eastern} Eastern"
+        )
+    else:
+        logger.warning(
+            f"Refresh token expires very soon ({format_timestamp(refresh_expiry)}), relying on interval refresh only"
+        )
 
 
 def auto_refresh_token(scheduler, db: Session, token_id: int, fernet: Fernet):
-    """Automatically refresh token and schedule the next refresh"""
+    """Automatically refresh token and manage scheduling"""
     try:
         logger.info("Performing automatic token refresh")
-        get_fresh_access_token(db, token_id, fernet)
-        # Schedule the next refresh after this one completes
-        schedule_next_token_refresh(scheduler, db, token_id, fernet)
+        get_fresh_access_token(
+            db, token_id, fernet, scheduler=None
+        )  # Don't auto-reschedule here
+
+        # Only reschedule if this was called from the expiry protection job
+        # The interval job will continue running automatically
+        current_job = scheduler.get_job("token_refresh_expiry_protection")
+        if current_job:
+            logger.info(
+                "Refresh token expiry protection job completed, rescheduling..."
+            )
+            schedule_next_token_refresh(scheduler, db, token_id, fernet)
+
     except Exception as e:
         logger.error(f"Automatic token refresh failed: {e}")
         # Try to schedule another attempt in 5 minutes as fallback

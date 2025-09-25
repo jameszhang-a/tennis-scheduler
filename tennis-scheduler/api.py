@@ -1,7 +1,7 @@
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Literal, Optional
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -112,6 +112,72 @@ class ManualTokenRefreshRequest(BaseModel):
         schema_extra = {
             "example": {"refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."}
         }
+
+
+class CreateScheduleRequest(BaseModel):
+    schedule_type: Literal["one-off", "recurring"]
+    day_of_week: Optional[str] = (
+        None  # MON, TUE, WED, THU, FRI, SAT, SUN (for recurring)
+    )
+    date: Optional[str] = None  # YYYY-MM-DD (for one-off)
+    time: str  # HH:MM format in Eastern Time
+    court_id: str  # "1" or "2"
+    occurrences: int = 1  # For recurring schedules
+    duration: int = 60  # Duration in minutes
+
+    @validator("day_of_week")
+    def validate_day(cls, v, values):
+        if values.get("schedule_type") == "recurring":
+            if not v:
+                raise ValueError("Day of week is required for recurring schedules")
+            valid_days = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+            if v.upper() not in valid_days:
+                raise ValueError(f"Day must be one of {valid_days}")
+            return v.upper()
+        return v
+
+    @validator("date")
+    def validate_date(cls, v, values):
+        if values.get("schedule_type") == "one-off" and not v:
+            raise ValueError("Date is required for one-off schedules")
+        if v:
+            try:
+                datetime.strptime(v, "%Y-%m-%d")
+            except ValueError:
+                raise ValueError("Date must be in YYYY-MM-DD format")
+        return v
+
+    @validator("time")
+    def validate_time_format(cls, v):
+        try:
+            datetime.strptime(v, "%H:%M")
+        except ValueError:
+            raise ValueError("Time must be in HH:MM format")
+        return v
+
+    @validator("court_id")
+    def validate_court_id(cls, v):
+        if v not in ["1", "2"]:
+            raise ValueError('Court ID must be "1" or "2"')
+        return v
+
+    @validator("occurrences")
+    def validate_occurrences(cls, v):
+        if v < 1:
+            raise ValueError("Occurrences must be at least 1")
+        return v
+
+    @validator("duration")
+    def validate_duration(cls, v):
+        if v < 30 or v > 180:
+            raise ValueError("Duration must be between 30 and 180 minutes")
+        return v
+
+
+class CreateScheduleResponse(BaseModel):
+    message: str
+    created_schedules: List[ScheduleResponse]
+    scheduler_jobs_added: int
 
 
 # Create FastAPI app
@@ -311,7 +377,16 @@ def get_scheduler_jobs(
         if job_type.lower() == "booking":
             jobs = [job for job in jobs if job.job_id.startswith("booking_")]
         elif job_type.lower() == "token_refresh":
-            jobs = [job for job in jobs if job.job_id == "token_refresh"]
+            jobs = [
+                job
+                for job in jobs
+                if job.job_id
+                in [
+                    "token_refresh",
+                    "token_refresh_interval",
+                    "token_refresh_expiry_protection",
+                ]
+            ]
         elif job_type.lower() == "token_prep":
             jobs = [job for job in jobs if job.job_id.startswith("token_prep_")]
         elif job_type.lower() == "other":
@@ -372,7 +447,14 @@ def get_upcoming_jobs(
             ]
         elif job_type.lower() == "token_refresh":
             upcoming_jobs = [
-                job for job in upcoming_jobs if job.job_id == "token_refresh"
+                job
+                for job in upcoming_jobs
+                if job.job_id
+                in [
+                    "token_refresh",
+                    "token_refresh_interval",
+                    "token_refresh_expiry_protection",
+                ]
             ]
 
     # Sort by next run time
@@ -392,7 +474,14 @@ def get_token_refresh_jobs():
     token_jobs = [
         job
         for job in jobs
-        if "token" in job.job_id.lower() or "refresh" in job.func_name.lower()
+        if job.job_id
+        in [
+            "token_refresh",
+            "token_refresh_interval",
+            "token_refresh_expiry_protection",
+        ]
+        or "token" in job.job_id.lower()
+        or "refresh" in job.func_name.lower()
     ]
 
     return token_jobs
@@ -582,12 +671,16 @@ def get_token_status(db: Session = Depends(get_db)):
     last_refresh_attempt = None
     if scheduler:
         for job in scheduler.get_jobs():
-            if job.id == "token_refresh" and hasattr(job, "next_run_time"):
+            if job.id in [
+                "token_refresh_interval",
+                "token_refresh",
+                "token_refresh_expiry_protection",
+            ] and hasattr(job, "next_run_time"):
                 # Estimate last run time based on interval
                 if job.next_run_time:
                     eastern = ZoneInfo("America/New_York")
                     next_run = job.next_run_time.astimezone(eastern)
-                    # Token refresh runs every 20 minutes, so last attempt was ~20 minutes before next
+                    # Token refresh interval job runs every 20 minutes, so last attempt was ~20 minutes before next
                     last_refresh_attempt = next_run - timedelta(minutes=20)
                 break
 
@@ -761,11 +854,26 @@ def get_scheduler_summary():
 
     # Categorize jobs
     booking_jobs = [job for job in jobs if job.job_id.startswith("booking_")]
-    token_jobs = [job for job in jobs if job.job_id == "token_refresh"]
+    token_jobs = [
+        job
+        for job in jobs
+        if job.job_id
+        in [
+            "token_refresh",
+            "token_refresh_interval",
+            "token_refresh_expiry_protection",
+        ]
+    ]
     other_jobs = [
         job
         for job in jobs
-        if not job.job_id.startswith("booking_") and job.job_id != "token_refresh"
+        if not job.job_id.startswith("booking_")
+        and job.job_id
+        not in [
+            "token_refresh",
+            "token_refresh_interval",
+            "token_refresh_expiry_protection",
+        ]
     ]
 
     # Find next occurrences
@@ -804,6 +912,37 @@ def get_scheduler_summary():
         "next_booking": next_booking.isoformat() if next_booking else None,
         "current_time": now.isoformat(),
     }
+
+
+@app.post("/api/schedules", response_model=CreateScheduleResponse)
+async def create_schedule(
+    request: CreateScheduleRequest, db: Session = Depends(get_db)
+):
+    """
+    Create new schedule(s) based on user input.
+    For recurring: Creates multiple schedule entries
+    For one-off: Creates 2 booking attempts (immediate and 1 week later)
+    """
+    scheduler = get_scheduler()
+    if not scheduler:
+        raise HTTPException(status_code=500, detail="Scheduler not available")
+
+    # Import the service function
+    from schedule_service import create_schedules_from_request
+
+    try:
+        created_schedules = create_schedules_from_request(db, request, scheduler)
+
+        return CreateScheduleResponse(
+            message=f"Successfully created {len(created_schedules)} schedule(s)",
+            created_schedules=created_schedules,
+            scheduler_jobs_added=len(created_schedules),
+        )
+    except Exception as e:
+        logger.error(f"Failed to create schedule: {e}")
+        raise HTTPException(
+            status_code=400, detail=f"Failed to create schedule: {str(e)}"
+        )
 
 
 @app.delete("/api/schedules/{schedule_id}")
