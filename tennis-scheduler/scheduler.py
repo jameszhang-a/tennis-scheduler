@@ -120,3 +120,105 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
     # Schedule dynamic token refresh based on refresh token expiry
     schedule_next_token_refresh(scheduler, db, token.id, fernet)
     logger.info("Scheduled dynamic token refresh")
+
+
+def prep_token_wrapper(token_id: int, fernet_key: bytes, schedule_id: int, scheduler):
+    """Wrapper for prep_token_for_booking that creates its own DB session"""
+    import os
+
+    from models import Token
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    # Get database session
+    def get_engine():
+        db_path = os.getenv("DB_PATH", "/app/data/db.sqlite")
+        return create_engine(f"sqlite:///{db_path}")
+
+    SessionLocal = sessionmaker(bind=get_engine())
+    db = SessionLocal()
+    fernet = Fernet(fernet_key)
+
+    try:
+        prep_token_for_booking(db, token_id, fernet, schedule_id, scheduler)
+    finally:
+        db.close()
+
+
+def book_slot_wrapper(schedule_id: int, fernet_key: bytes):
+    """Wrapper for book_slot that creates its own DB session"""
+    import os
+
+    from models import Token
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    # Get database session
+    def get_engine():
+        db_path = os.getenv("DB_PATH", "/app/data/db.sqlite")
+        return create_engine(f"sqlite:///{db_path}")
+
+    SessionLocal = sessionmaker(bind=get_engine())
+    db = SessionLocal()
+    fernet = Fernet(fernet_key)
+
+    try:
+        book_slot(db, schedule_id, fernet)
+    finally:
+        db.close()
+
+
+def add_schedule_to_scheduler(scheduler: BackgroundScheduler, schedule):
+    """Dynamically add a single schedule to the running scheduler."""
+    import os
+
+    from models import Token
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    fernet_key = os.getenv("FERNET_KEY").encode()
+
+    # Get database session for token lookup
+    def get_engine():
+        db_path = os.getenv("DB_PATH", "/app/data/db.sqlite")
+        return create_engine(f"sqlite:///{db_path}")
+
+    SessionLocal = sessionmaker(bind=get_engine())
+    db = SessionLocal()
+
+    try:
+        token = db.query(Token).first()
+        if not token:
+            logger.error(
+                f"No token found in database - cannot schedule job for schedule {schedule.id}"
+            )
+            return
+
+        trigger_time_utc = schedule.trigger_time.astimezone(ZoneInfo("UTC"))
+        utc_now = datetime.now(ZoneInfo("UTC"))
+
+        # Add token prep job if trigger is in the future
+        if trigger_time_utc > utc_now:
+            token_prep_time = trigger_time_utc - timedelta(minutes=2)
+            if token_prep_time > utc_now:
+                scheduler.add_job(
+                    prep_token_wrapper,
+                    "date",
+                    run_date=token_prep_time,
+                    args=[token.id, fernet_key, schedule.id, scheduler],
+                    id=f"token_prep_{schedule.id}",
+                )
+
+        # Add booking job
+        scheduler.add_job(
+            book_slot_wrapper,
+            "date",
+            run_date=trigger_time_utc,
+            args=[schedule.id, fernet_key],
+            id=f"booking_{schedule.id}",
+        )
+
+        logger.info(f"Added schedule {schedule.id} to scheduler")
+
+    finally:
+        db.close()
