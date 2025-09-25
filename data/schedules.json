@@ -1,13 +1,13 @@
 [
   {
     "type": "recurring",
-    "rrule": "FREQ=DAILY;BYHOUR=19;BYMINUTE=30;COUNT=30",
+    "rrule": "FREQ=DAILY;BYHOUR=19;BYMINUTE=00;COUNT=30",
     "court_id": "1",
     "duration": 60
   },
   {
     "type": "recurring",
-    "rrule": "FREQ=DAILY;BYHOUR=20;BYMINUTE=0;COUNT=30",
+    "rrule": "FREQ=DAILY;BYHOUR=19;BYMINUTE=30;COUNT=30",
     "court_id": "1",
     "duration": 60
   },
