@@ -149,11 +149,37 @@ class CreateScheduleRequest(BaseModel):
 
     @validator("time")
     def validate_time_format(cls, v):
+        # Accept both 24-hour (HH:MM) and 12-hour (e.g., 9AM, 9:00 PM) inputs
+        # Normalize to 24-hour HH:MM string for downstream logic
+        import re
+
+        raw = v.strip()
+        # Try 24-hour format first
         try:
-            datetime.strptime(v, "%H:%M")
+            parsed_24 = datetime.strptime(raw, "%H:%M")
+            return parsed_24.strftime("%H:%M")
         except ValueError:
-            raise ValueError("Time must be in HH:MM format")
-        return v
+            pass
+
+        # Try 12-hour variants like "9AM", "9:00AM", "09:30 pm", "930PM"
+        match = re.fullmatch(r"(?i)\s*(\d{1,2})(?::?(\d{2}))?\s*([AP]M)\s*", raw)
+        if match:
+            hour = int(match.group(1))
+            minute = int(match.group(2)) if match.group(2) else 0
+            meridiem = match.group(3).upper()
+
+            if not (1 <= hour <= 12 and 0 <= minute <= 59):
+                raise ValueError("Time must be a valid clock time")
+
+            # Convert to 24-hour
+            if hour == 12:
+                hour = 0 if meridiem == "AM" else 12
+            elif meridiem == "PM":
+                hour += 12
+
+            return f"{hour:02d}:{minute:02d}"
+
+        raise ValueError("Time must be in HH:MM or h[:mm]AM/PM format (Eastern)")
 
     @validator("court_id")
     def validate_court_id(cls, v):
