@@ -194,7 +194,9 @@ def add_schedule_to_scheduler(scheduler: BackgroundScheduler, schedule):
             )
             return
 
-        trigger_time_utc = schedule.trigger_time.astimezone(ZoneInfo("UTC"))
+        # Ensure trigger_time has timezone info (SQLite loses it)
+        trigger_time_eastern = to_eastern(schedule.trigger_time)
+        trigger_time_utc = trigger_time_eastern.astimezone(ZoneInfo("UTC"))
         utc_now = datetime.now(ZoneInfo("UTC"))
 
         # Add token prep job if trigger is in the future
