@@ -1,11 +1,13 @@
 import logging
 import os
+import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from auth import (
     get_fresh_access_token,
+    get_token_via_playwright,
     prep_token_for_booking,
     schedule_next_token_refresh,
 )
@@ -23,11 +25,12 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
 
     fernet = Fernet(os.getenv("FERNET_KEY").encode())
 
-    # Get token early since we need it for token prep jobs
+    # Get token (optional when using Playwright - will be created on first auth)
     token = db.query(Token).first()
     if not token:
-        logger.error("No token found in database - cannot schedule token prep jobs")
-        return
+        logger.info(
+            "No token found in database - Playwright will create one on first auth"
+        )
 
     pending = db.query(Schedule).filter(Schedule.status == "pending").all()
     for schedule in pending:
@@ -46,17 +49,18 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
             if schedule.type.value == "one-off":
                 # If desired time is still in the future (in UTC), schedule immediately
                 if desired_time_utc > utc_now:
-                    # For immediate bookings, also refresh token immediately
+                    # For immediate bookings, use Playwright to get fresh token now
+                    playwright_time = utc_now
+                    booking_time = utc_now + timedelta(minutes=1)
+
                     scheduler.add_job(
-                        prep_token_for_booking,
+                        playwright_login_wrapper,
                         "date",
-                        run_date=utc_now,
-                        args=[db, token.id, fernet, schedule.id, scheduler],
-                        id=f"token_prep_{schedule.id}",
+                        run_date=playwright_time,
+                        args=[schedule.id, fernet.key],
+                        id=f"playwright_auth_{schedule.id}",
                     )
 
-                    # Schedule the booking 30 seconds after token prep to ensure token is ready
-                    booking_time = utc_now + timedelta(seconds=30)
                     scheduler.add_job(
                         book_slot,
                         "date",
@@ -72,7 +76,7 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
                         ZoneInfo("America/New_York")
                     )
                     logger.info(
-                        f"Past-due one-off schedule {schedule.id}: token prep at {immediate_trigger_eastern} Eastern, booking at {booking_trigger_eastern} Eastern for desired time {desired_time_eastern} Eastern"
+                        f"Past-due one-off schedule {schedule.id}: Playwright login at {immediate_trigger_eastern} Eastern, booking at {booking_trigger_eastern} Eastern for desired time {desired_time_eastern} Eastern"
                     )
                     continue
                 else:
@@ -86,23 +90,23 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
                 continue
 
         # Normal scheduling for future trigger times
-        # Schedule token refresh 2 minutes before booking
-        token_prep_time_utc = trigger_time_utc - timedelta(minutes=2)
-        token_prep_time_eastern = token_prep_time_utc.astimezone(
+        # Schedule Playwright login 4 minutes before booking
+        playwright_time_utc = trigger_time_utc - timedelta(minutes=4)
+        playwright_time_eastern = playwright_time_utc.astimezone(
             ZoneInfo("America/New_York")
         )
 
-        # Only schedule token prep if it's still in the future
-        if token_prep_time_utc > utc_now:
+        # Only schedule Playwright login if it's still in the future
+        if playwright_time_utc > utc_now:
             scheduler.add_job(
-                prep_token_for_booking,
+                playwright_login_wrapper,
                 "date",
-                run_date=token_prep_time_utc,
-                args=[db, token.id, fernet, schedule.id, scheduler],
-                id=f"token_prep_{schedule.id}",
+                run_date=playwright_time_utc,
+                args=[schedule.id, fernet.key],
+                id=f"playwright_auth_{schedule.id}",
             )
             logger.info(
-                f"Scheduled token prep for booking {schedule.id} at {token_prep_time_eastern} Eastern ({token_prep_time_utc} UTC)"
+                f"Scheduled Playwright login for booking {schedule.id} at {playwright_time_eastern} Eastern ({playwright_time_utc} UTC)"
             )
 
         # APScheduler expects UTC time
@@ -117,9 +121,13 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
             f"Scheduled booking {schedule.id} for {trigger_time_eastern} Eastern ({trigger_time_utc} UTC)"
         )
 
-    # Schedule dynamic token refresh based on refresh token expiry
-    schedule_next_token_refresh(scheduler, db, token.id, fernet)
-    logger.info("Scheduled dynamic token refresh")
+    # Optional: Schedule dynamic token refresh if using refresh tokens (not needed with Playwright)
+    # With Playwright, tokens are obtained fresh before each booking
+    if token and token.refresh_expiry and token.refresh_expiry > time.time():
+        schedule_next_token_refresh(scheduler, db, token.id, fernet)
+        logger.info("Scheduled dynamic token refresh (refresh token available)")
+    else:
+        logger.info("Using Playwright-only authentication - no token refresh scheduled")
 
 
 def prep_token_wrapper(token_id: int, fernet_key: bytes, schedule_id: int, scheduler):
@@ -168,17 +176,40 @@ def book_slot_wrapper(schedule_id: int, fernet_key: bytes):
         db.close()
 
 
-def add_schedule_to_scheduler(scheduler: BackgroundScheduler, schedule):
-    """Dynamically add a single schedule to the running scheduler."""
+def playwright_login_wrapper(schedule_id: int, fernet_key: bytes):
+    """Wrapper for Playwright login that creates its own DB session"""
     import os
 
-    from models import Token
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    # Get database session
+    def get_engine():
+        db_path = os.getenv("DB_PATH", "/app/data/db.sqlite")
+        return create_engine(f"sqlite:///{db_path}")
+
+    SessionLocal = sessionmaker(bind=get_engine())
+    db = SessionLocal()
+    fernet = Fernet(fernet_key)
+
+    try:
+        # Use headless mode by default (can be overridden via env var)
+        headless = os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() == "true"
+        get_token_via_playwright(db, fernet, schedule_id, headless=headless)
+    finally:
+        db.close()
+
+
+def add_schedule_to_scheduler(scheduler: BackgroundScheduler, schedule):
+    """Dynamically add a single schedule to the running scheduler using Playwright for auth."""
+    import os
+
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
     fernet_key = os.getenv("FERNET_KEY").encode()
 
-    # Get database session for token lookup
+    # Get database session
     def get_engine():
         db_path = os.getenv("DB_PATH", "/app/data/db.sqlite")
         return create_engine(f"sqlite:///{db_path}")
@@ -187,28 +218,24 @@ def add_schedule_to_scheduler(scheduler: BackgroundScheduler, schedule):
     db = SessionLocal()
 
     try:
-        token = db.query(Token).first()
-        if not token:
-            logger.error(
-                f"No token found in database - cannot schedule job for schedule {schedule.id}"
-            )
-            return
-
         # Ensure trigger_time has timezone info (SQLite loses it)
         trigger_time_eastern = to_eastern(schedule.trigger_time)
         trigger_time_utc = trigger_time_eastern.astimezone(ZoneInfo("UTC"))
         utc_now = datetime.now(ZoneInfo("UTC"))
 
-        # Add token prep job if trigger is in the future
+        # Add Playwright login job 4 minutes before booking
         if trigger_time_utc > utc_now:
-            token_prep_time = trigger_time_utc - timedelta(minutes=2)
-            if token_prep_time > utc_now:
+            playwright_time = trigger_time_utc - timedelta(minutes=4)
+            if playwright_time > utc_now:
                 scheduler.add_job(
-                    prep_token_wrapper,
+                    playwright_login_wrapper,
                     "date",
-                    run_date=token_prep_time,
-                    args=[token.id, fernet_key, schedule.id, scheduler],
-                    id=f"token_prep_{schedule.id}",
+                    run_date=playwright_time,
+                    args=[schedule.id, fernet_key],
+                    id=f"playwright_auth_{schedule.id}",
+                )
+                logger.info(
+                    f"Scheduled Playwright login for booking {schedule.id} at {playwright_time.astimezone(ZoneInfo('America/New_York'))} Eastern"
                 )
 
         # Add booking job
@@ -220,7 +247,7 @@ def add_schedule_to_scheduler(scheduler: BackgroundScheduler, schedule):
             id=f"booking_{schedule.id}",
         )
 
-        logger.info(f"Added schedule {schedule.id} to scheduler")
+        logger.info(f"Added schedule {schedule.id} to scheduler with Playwright auth")
 
     finally:
         db.close()

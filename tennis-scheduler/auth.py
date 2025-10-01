@@ -8,6 +8,7 @@ import requests
 from cryptography.fernet import Fernet
 from http_logger import logged_request
 from models import Token
+from playwright_auth import login_with_playwright
 from sqlalchemy.orm import Session
 from util import format_timestamp
 
@@ -287,4 +288,62 @@ def refresh_with_new_token(
         return data["access_token"]
     except Exception as e:
         logger.error(f"Token refresh with new token failed: {e}")
+        raise
+
+
+def get_token_via_playwright(
+    db: Session, fernet: Fernet, schedule_id: int, headless: bool = True
+) -> str:
+    """
+    Get fresh token via Playwright login for a specific booking.
+    This replaces the refresh token mechanism with browser automation.
+
+    Args:
+        db: Database session
+        fernet: Encryption key for token storage
+        schedule_id: Schedule ID for logging/correlation
+        headless: Whether to run browser in headless mode
+
+    Returns:
+        Fresh access token string
+
+    Raises:
+        Exception: If Playwright login fails
+    """
+    logger.info(f"Obtaining fresh token via Playwright for booking {schedule_id}")
+
+    try:
+        # Use Playwright to log in and capture tokens
+        token_data = login_with_playwright(headless=headless)
+
+        # Update or create token record in database
+        token = db.query(Token).first()
+        if not token:
+            token = Token()
+            db.add(token)
+            logger.info("Creating new token record from Playwright login")
+        else:
+            logger.info("Updating existing token record from Playwright login")
+
+        current_time = time.time()
+
+        # Store encrypted tokens
+        token.access_token = fernet.encrypt(token_data["access_token"].encode())
+        token.refresh_token = fernet.encrypt(token_data["refresh_token"].encode())
+        token.access_expiry = current_time + token_data["expires_in"]
+        token.refresh_expiry = current_time + token_data["refresh_expires_in"]
+        token.session_state = token_data.get("session_state", "")
+
+        db.commit()
+
+        logger.info(
+            f"Token obtained via Playwright for booking {schedule_id}. "
+            f"Access expires in {token_data['expires_in']}s, "
+            f"Refresh expires in {token_data['refresh_expires_in']}s"
+        )
+
+        return token_data["access_token"]
+
+    except Exception as e:
+        logger.error(f"Playwright authentication failed for booking {schedule_id}: {e}")
         raise
