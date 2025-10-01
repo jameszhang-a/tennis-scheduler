@@ -53,7 +53,7 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
                     playwright_time = utc_now
                     booking_time = utc_now + timedelta(minutes=1)
                     fernet_key = os.getenv("FERNET_KEY").encode()
-                    
+
                     scheduler.add_job(
                         playwright_login_wrapper,
                         "date",
@@ -110,13 +110,15 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
             logger.info(
                 f"Scheduled Playwright login for booking {schedule.id} at {playwright_time_eastern} Eastern ({playwright_time_utc} UTC)"
             )
-
+        
         # APScheduler expects UTC time
+        # Use wrapper to create thread-safe DB session
+        fernet_key = os.getenv("FERNET_KEY").encode()
         scheduler.add_job(
-            book_slot,
+            book_slot_wrapper,
             "date",
             run_date=trigger_time_utc,  # Use UTC time for APScheduler
-            args=[db, schedule.id, fernet],
+            args=[schedule.id, fernet_key],
             id=f"booking_{schedule.id}",
         )
         logger.info(
