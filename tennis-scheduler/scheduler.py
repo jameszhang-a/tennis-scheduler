@@ -52,20 +52,21 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
                     # For immediate bookings, use Playwright to get fresh token now
                     playwright_time = utc_now
                     booking_time = utc_now + timedelta(minutes=1)
-
+                    fernet_key = os.getenv("FERNET_KEY").encode()
+                    
                     scheduler.add_job(
                         playwright_login_wrapper,
                         "date",
                         run_date=playwright_time,
-                        args=[schedule.id, fernet.key],
+                        args=[schedule.id, fernet_key],
                         id=f"playwright_auth_{schedule.id}",
                     )
 
                     scheduler.add_job(
-                        book_slot,
+                        book_slot_wrapper,
                         "date",
                         run_date=booking_time,
-                        args=[db, schedule.id, fernet],
+                        args=[schedule.id, fernet_key],
                         id=f"booking_{schedule.id}",
                     )
                     # Convert back to Eastern for logging
@@ -98,11 +99,12 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
 
         # Only schedule Playwright login if it's still in the future
         if playwright_time_utc > utc_now:
+            fernet_key = os.getenv("FERNET_KEY").encode()
             scheduler.add_job(
                 playwright_login_wrapper,
                 "date",
                 run_date=playwright_time_utc,
-                args=[schedule.id, fernet.key],
+                args=[schedule.id, fernet_key],
                 id=f"playwright_auth_{schedule.id}",
             )
             logger.info(
