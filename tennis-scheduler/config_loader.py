@@ -17,26 +17,49 @@ logger = logging.getLogger(__name__)
 def load_configs(db: Session, schedules_path: str, tokens_path: str):
     fernet = Fernet(os.getenv("FERNET_KEY").encode())
 
-    # Load tokens
-    with open(tokens_path, "r") as f:
-        token_data = json.load(f)
-    refresh_token = token_data.get("refresh_token")
-    if not refresh_token:
-        raise ValueError("No refresh_token in tokens.json")
+    # Load tokens (optional when using Playwright auth)
+    if os.path.exists(tokens_path):
+        logger.info(f"Loading tokens from {tokens_path}")
+        with open(tokens_path, "r") as f:
+            token_data = json.load(f)
+        refresh_token = token_data.get("refresh_token")
 
-    token = db.query(Token).first()
-    if not token:
-        token = Token(
-            refresh_token=fernet.encrypt(refresh_token.encode()),
-            access_token=fernet.encrypt(b""),
-            access_expiry=time.time() + 5 * 60,
-            refresh_expiry=time.time() + 20 * 60,
-            session_state="",
-        )
-        db.add(token)
+        if refresh_token:
+            token = db.query(Token).first()
+            if not token:
+                token = Token(
+                    refresh_token=fernet.encrypt(refresh_token.encode()),
+                    access_token=fernet.encrypt(b""),
+                    access_expiry=time.time() + 5 * 60,
+                    refresh_expiry=time.time() + 20 * 60,
+                    session_state="",
+                )
+                db.add(token)
+            else:
+                token.refresh_token = fernet.encrypt(refresh_token.encode())
+            db.commit()
+            logger.info("Tokens loaded from tokens.json (refresh token available)")
+        else:
+            logger.warning("No refresh_token in tokens.json - will use Playwright auth")
     else:
-        token.refresh_token = fernet.encrypt(refresh_token.encode())
-    db.commit()
+        logger.info(
+            f"No tokens.json found at {tokens_path} - will use Playwright auth only"
+        )
+        # Create a minimal token record if none exists (Playwright will populate it)
+        token = db.query(Token).first()
+        if not token:
+            token = Token(
+                refresh_token=fernet.encrypt(b""),
+                access_token=fernet.encrypt(b""),
+                access_expiry=time.time(),
+                refresh_expiry=time.time(),
+                session_state="",
+            )
+            db.add(token)
+            db.commit()
+            logger.info(
+                "Created empty token record - Playwright will populate on first auth"
+            )
 
     # Load schedules
     with open(schedules_path, "r") as f:
