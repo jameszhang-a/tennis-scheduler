@@ -110,7 +110,7 @@ def init_scheduler(scheduler: BackgroundScheduler, db):
             logger.info(
                 f"Scheduled Playwright login for booking {schedule.id} at {playwright_time_eastern} Eastern ({playwright_time_utc} UTC)"
             )
-        
+
         # APScheduler expects UTC time
         # Use wrapper to create thread-safe DB session
         fernet_key = os.getenv("FERNET_KEY").encode()
